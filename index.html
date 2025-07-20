@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent for Business Automation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f4f4f9;
+        }
+        .container {
+            max-width: 800px;
+            margin: auto;
+            padding: 20px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        select, input[type="text"], button {
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .answer {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e9ecef;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .loading img {
+            width: 50px;
+        }
+        .progress {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>AI Agent for Business Automation</h1>
+        <form id="query-form">
+            <select name="model" id="model">
+                <option value="gemini" {% if model == "gemini" %}selected{% endif %}>Gemini</option>
+                <option value="chatgpt" {% if model == "chatgpt" %}selected{% endif %}>ChatGPT</option>
+                <option value="deepseek" {% if model == "deepseek" %}selected{% endif %}>DeepSeek</option>
+            </select>
+            <input type="text" name="question" id="question" placeholder="Введите ваш вопрос" value="{{ question or '' }}" required>
+            <button type="submit">Отправить</button>
+        </form>
+        <div class="loading" id="loading">
+            <img src="https://media.giphy.com/media/3oEjI6SIIHBdRxXI40/giphy.gif" alt="Loading...">
+        </div>
+        <div class="progress" id="progress"></div>
+        {% if answer %}
+            <div class="answer">
+                <h3>Ответ:</h3>
+                <p>{{ answer }}</p>
+            </div>
+        {% endif %}
+    </div>
+    <script>
+        const form = document.getElementById('query-form');
+        const loading = document.getElementById('loading');
+        const progress = document.getElementById('progress');
+        const answerDiv = document.querySelector('.answer') || document.createElement('div');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const question = document.getElementById('question').value;
+            const model = document.getElementById('model').value;
+            loading.style.display = 'block';
+            progress.innerText = '';
+            answerDiv.innerHTML = '';
+
+            const ws = new WebSocket('ws://127.0.0.1:8007/ws/query');
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ question, model }));
+            };
+            ws.onmessage = async (event) => {
+                const data = event.data.startsWith('{') ? JSON.parse(event.data) : { text: event.data };
+                if (data.status === 'complete') {
+                    loading.style.display = 'none';
+                    answerDiv.innerHTML = `<h3>Ответ:</h3><p>${data.answer}</p>`;
+                    answerDiv.className = 'answer';
+                    document.querySelector('.container').appendChild(answerDiv);
+                    ws.close();
+                } else if (data.status === 'error') {
+                    loading.style.display = 'none';
+                    answerDiv.innerHTML = `<h3>Ошибка:</h3><p>${data.answer}</p>`;
+                    answerDiv.className = 'answer';
+                    document.querySelector('.container').appendChild(answerDiv);
+                    ws.close();
+                } else {
+                    progress.innerText += data.text + '\n';
+                }
+            };
+            ws.onerror = () => {
+                loading.style.display = 'none';
+                progress.innerText = 'Ошибка подключения к WebSocket';
+            };
+        });
+    </script>
+</body>
+</html>
