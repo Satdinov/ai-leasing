@@ -1,5 +1,6 @@
 import os
 import re
+import jwt
 import json
 import logging
 import shutil
@@ -8,14 +9,17 @@ from io import BytesIO
 from typing import Dict, Optional, List
 from contextlib import asynccontextmanager
 from unidecode import unidecode
+import markdown
 
 from docx import Document
-from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Security, Form, Request, WebSocket, status
-from fastapi.security import APIKeyHeader
+from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Form, Request, WebSocket, status, WebSocketDisconnect
+from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, text, inspect
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import create_engine, inspect
+from sqlalchemy.orm import sessionmaker, Session, configure_mappers
 from langchain_community.utilities import SQLDatabase
 from langchain_community.agent_toolkits import create_sql_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -25,6 +29,11 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_deepseek import ChatDeepSeek
 from langchain_core.callbacks import BaseCallbackHandler
 import pandas as pd
+from models import Base, FileMetadata, User, Chat, Message
+from auth import create_access_token, authenticate_user, get_current_user, get_password_hash, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from datetime import timedelta
+from database import get_db
+from jwt import ExpiredSignatureError
 
 # Настройка логгера
 logging.basicConfig(level=logging.INFO)
@@ -37,7 +46,6 @@ class Config:
     POSTGRES_URI = f"postgresql://{os.getenv('POSTGRES_USER')}:{os.getenv('POSTGRES_PASSWORD')}@" \
                    f"{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}/{os.getenv('POSTGRES_DB')}"
     PERSIST_DIRECTORY = "chroma_db"
-    API_KEY = os.getenv("API_KEY")
     CHUNK_SIZE = 1000
     CHUNK_OVERLAP = 200
     DOCUMENTS_DIR = "documents"
@@ -49,41 +57,28 @@ config = Config()
 
 # Инициализация компонентов
 engine = create_engine(config.POSTGRES_URI)
-
-def init_db():
-    """Инициализация таблиц БД"""
-    with engine.connect() as conn:
-        conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS file_metadata (
-            id SERIAL PRIMARY KEY,
-            file_name TEXT NOT NULL,
-            file_path TEXT NOT NULL,
-            file_type TEXT NOT NULL,
-            table_name TEXT,
-            file_size INTEGER,
-            upload_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """))
-        conn.commit()
-
-init_db()
-
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 db = SQLDatabase(engine=engine)
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=config.CHUNK_SIZE,
     chunk_overlap=config.CHUNK_OVERLAP
 )
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 templates = Jinja2Templates(directory="templates")
 
 # Создание необходимых директорий
 os.makedirs(config.DOCUMENTS_DIR, exist_ok=True)
 os.makedirs(config.CACHE_DIR, exist_ok=True)
 
+# Конфигурируем мапперы сразу после импорта моделей
+logger.info("Configuring SQLAlchemy mappers")
+configure_mappers()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Контекст жизненного цикла приложения"""
     global vectorstore
+    logger.info("Creating database tables")
+    Base.metadata.create_all(bind=engine)
     try:
         vectorstore = Chroma(
             persist_directory=config.PERSIST_DIRECTORY,
@@ -105,6 +100,7 @@ app = FastAPI(
     title="AI Agent for Business Automation",
     lifespan=lifespan
 )
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 class WebSocketCallbackHandler(BaseCallbackHandler):
     def __init__(self, websocket: WebSocket):
@@ -118,27 +114,9 @@ class WebSocketCallbackHandler(BaseCallbackHandler):
             await self.websocket.send_json(
                 {"type": "progress", "message": f"Проверка схемы таблицы: {action.tool_input}"})
 
-async def verify_api_key(api_key: str = Security(api_key_header)):
-    if api_key != config.API_KEY:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API Key"
-        )
-    return api_key
-
 def normalize_table_name(filename: str) -> str:
-    """
-    Нормализует имя таблицы:
-    1. Исправляет кодировку имен файлов из ZIP
-    2. Удаляет расширение файла
-    3. Транслитерирует кириллицу в латиницу
-    4. Заменяет спецсимволы на подчеркивания
-    5. Усекает до максимальной длины
-    """
-    # Исправление кодировки для имен из ZIP
     if filename.startswith('._'):
         filename = filename[2:]
-
     try:
         filename = filename.encode('cp437').decode('utf-8')
     except (UnicodeEncodeError, UnicodeDecodeError):
@@ -146,46 +124,24 @@ def normalize_table_name(filename: str) -> str:
             filename = filename.encode('utf-8').decode('utf-8')
         except:
             pass
-
-    # Удаляем расширение файла
     name = os.path.splitext(filename)[0]
-
-    # Транслитерируем кириллицу в латиницу
     name = unidecode(name)
-
-    # Заменяем все не-буквенно-цифровые символы на подчеркивания
     name = re.sub(r'[^\w]', '_', name)
-
-    # Удаляем повторяющиеся подчеркивания
     name = re.sub(r'_+', '_', name)
-
-    # Удаляем подчеркивания в начале и конце
     name = name.strip('_')
-
-    # Приводим к нижнему регистру
     name = name.lower()
-
-    # Усекаем до максимальной длины
     if len(name) > config.MAX_TABLE_NAME_LENGTH:
         name = name[:config.MAX_TABLE_NAME_LENGTH]
-
     return name
 
-def get_table_names() -> List[str]:
-    """Получение списка таблиц с проверкой существования"""
+def get_table_names(db: Session) -> List[str]:
     try:
-        with engine.connect() as conn:
-            result = conn.execute(text("""
-                SELECT DISTINCT table_name 
-                FROM file_metadata 
-                WHERE table_name IS NOT NULL
-            """))
-            table_names = [row[0] for row in result if row[0]]
-
-            inspector = inspect(engine)
-            existing_tables = inspector.get_table_names()
-            return [t for t in table_names if t in existing_tables]
-    except SQLAlchemyError as e:
+        table_names = db.query(FileMetadata.table_name).filter(FileMetadata.table_name.isnot(None)).distinct().all()
+        table_names = [t[0] for t in table_names]
+        inspector = inspect(engine)
+        existing_tables = inspector.get_table_names()
+        return [t for t in table_names if t in existing_tables]
+    except Exception as e:
         logger.error(f"Error getting table names: {e}")
         return []
 
@@ -212,7 +168,6 @@ def cache_response(question: str, model: str, response: Dict):
                 cache = json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             logger.error(f"Error reading cache: {e}")
-
     cache[question] = response
     try:
         with open(cache_path, "w") as f:
@@ -225,7 +180,7 @@ def get_llm(model_name: str):
         "gemini": lambda: ChatGoogleGenerativeAI(
             model="gemini-1.5-flash",
             api_key=os.getenv("AITUNNEL_API_KEY"),
-            base_url = "https://api.aitunnel.ru/v1/"
+            base_url="https://api.aitunnel.ru/v1/"
         ),
         "chatgpt": lambda: ChatOpenAI(
             model="gpt-4o-mini",
@@ -246,28 +201,13 @@ def get_llm(model_name: str):
     return models[model_name]()
 
 def create_sql_agent_wrapper(llm, db, table_names: List[str]):
-    """Создание SQL агента с информацией о файлах"""
-    with engine.connect() as conn:
-        result = conn.execute(text("""
-            SELECT file_name, file_path, file_type, table_name 
-            FROM file_metadata
-        """))
-        file_metadata = [
-            {
-                "file_name": row[0],
-                "file_path": row[1],
-                "file_type": row[2],
-                "table_name": row[3]
-            } for row in result
-        ]
-
-    file_info = "\n".join(
-        f"- {row['file_name']} ({row['file_type']}) in {row['file_path'] or 'root'}"
-        for row in file_metadata
-    )
-
+    with SessionLocal() as session:
+        file_metadata = session.query(FileMetadata).all()
+        file_info = "\n".join(
+            f"- {row.file_name} ({row.file_type}) in {row.file_path or 'root'}"
+            for row in file_metadata
+        )
     table_info = db.get_table_info(table_names)
-
     prefix = f"""
     You are querying a database with tables: {table_names}.
     Schema: {table_info}.
@@ -314,7 +254,6 @@ def create_sql_agent_wrapper(llm, db, table_names: List[str]):
     9. When showing file paths, provide full path information.
     10. For vehicle-specific queries (e.g., Mercedes, Scania), use columns like 'Автомобиль' or 'Гос. № тягача / прицепа' to identify the vehicle model.
     """
-
     return create_sql_agent(
         llm=llm,
         db=db,
@@ -326,15 +265,97 @@ def create_sql_agent_wrapper(llm, db, table_names: List[str]):
         handle_parsing_errors=True
     )
 
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    print(request.url.path, 'request')
+    # Разрешаем доступ к публичным страницам без аутентификации
+    public_paths = ["/login", "/register", "/static", "/token"]
+    if any(request.url.path.startswith(path) for path in public_paths):
+        return await call_next(request)
+
+    # Проверяем токен для защищенных страниц
+    token = request.cookies.get("access_token")
+    if not token:
+        return RedirectResponse(url="/login")
+
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        request.state.user = payload.get("sub")
+    except ExpiredSignatureError:
+        return RedirectResponse(url="/login")
+
+    response = await call_next(request)
+    return response
+
 @app.get("/")
 async def root(request: Request):
-    return templates.TemplateResponse("index.html", {
+    return RedirectResponse(url="/dashboard")
+
+@app.get("/login")
+async def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.get("/register")
+async def register_page(request: Request):
+    return templates.TemplateResponse("register.html", {"request": request})
+
+@app.get("/dashboard")
+async def dashboard(request: Request, current_user: User = Depends(get_current_user)):
+    return templates.TemplateResponse("dashboard.html", {
         "request": request,
-        "answer": None
+        "current_user": current_user
     })
 
-async def process_xlsx(file: UploadFile, file_path: str = "") -> Dict:
-    """Обработка XLSX файла с сохранением метаданных"""
+@app.get("/upload")
+async def upload_page(request: Request, current_user: User = Depends(get_current_user)):
+    return templates.TemplateResponse("upload.html", {
+        "request": request,
+        "current_user": current_user
+    })
+
+@app.get("/files")
+async def files_page(request: Request, current_user: User = Depends(get_current_user)):
+    return templates.TemplateResponse("files.html", {
+        "request": request,
+        "current_user": current_user
+    })
+
+@app.get("/logout")
+async def logout():
+    response = RedirectResponse(url="/login")
+    response.delete_cookie("access_token")
+    return response
+
+@app.post("/register")
+async def register(username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    if db.query(User).filter(User.username == username).first():
+        raise HTTPException(status_code=400, detail="Username already exists")
+    hashed_password = get_password_hash(password)
+    user = User(username=username, hashed_password=hashed_password)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"username": user.username}
+
+@app.post("/token")
+async def login_for_access_token(
+        form_data: OAuth2PasswordRequestForm = Depends(),
+        db: Session = Depends(get_db)
+):
+    user = authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return JSONResponse(content={"access_token": access_token, "token_type": "bearer"})
+
+async def process_xlsx(file: UploadFile, file_path: str = "", db: Session = Depends(get_db)):
     temp_path = f"temp_{file.filename}"
     file_name = file.filename
     try:
@@ -346,13 +367,8 @@ async def process_xlsx(file: UploadFile, file_path: str = "") -> Dict:
                     detail="File size exceeds maximum allowed size"
                 )
             f.write(content)
-
-        # Чтение Excel с указанием движка
         df = pd.read_excel(temp_path, engine="openpyxl")
-
-        # Генерация нормализованного имени таблицы
         table_name = normalize_table_name(file.filename)
-
         try:
             file_name = file.filename.encode('cp437').decode('utf-8')
         except (UnicodeEncodeError, UnicodeDecodeError):
@@ -360,32 +376,16 @@ async def process_xlsx(file: UploadFile, file_path: str = "") -> Dict:
                 file_name = file.filename.encode('utf-8').decode('utf-8')
             except:
                 pass
-
-        # Загрузка в PostgreSQL
-        df.to_sql(
-            name=table_name,
-            con=engine,
-            if_exists="replace",
-            index=False
+        df.to_sql(name=table_name, con=engine, if_exists="replace", index=False)
+        file_metadata = FileMetadata(
+            file_name=file_name,
+            file_path=file_path,
+            file_type="xlsx",
+            table_name=table_name,
+            file_size=len(content)
         )
-
-        with engine.connect() as conn:
-            conn.execute(
-                text("""
-                INSERT INTO file_metadata 
-                (file_name, file_path, file_type, table_name, file_size)
-                VALUES (:name, :path, :type, :table, :size)
-                """),
-                {
-                    "name": file_name,
-                    "path": file_path,
-                    "type": "xlsx",
-                    "table": table_name,
-                    "size": len(content)
-                }
-            )
-            conn.commit()
-
+        db.add(file_metadata)
+        db.commit()
         return {
             "status": "success",
             "filename": file_name,
@@ -402,8 +402,7 @@ async def process_xlsx(file: UploadFile, file_path: str = "") -> Dict:
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-async def process_docx(file: UploadFile, file_path: str = "") -> Dict:
-    """Обработка DOCX файла с сохранением метаданных"""
+async def process_docx(file: UploadFile, file_path: str = "", db: Session = Depends(get_db)):
     temp_path = f"temp_{file.filename}"
     file_name = file.filename
     try:
@@ -415,10 +414,8 @@ async def process_docx(file: UploadFile, file_path: str = "") -> Dict:
                     detail="File size exceeds maximum allowed size"
                 )
             f.write(content)
-
         doc = Document(temp_path)
         text_content = "\n".join(para.text for para in doc.paragraphs if para.text)
-
         try:
             file_name = file.filename.encode('cp437').decode('utf-8')
         except (UnicodeEncodeError, UnicodeDecodeError):
@@ -426,7 +423,6 @@ async def process_docx(file: UploadFile, file_path: str = "") -> Dict:
                 file_name = file.filename.encode('utf-8').decode('utf-8')
             except:
                 pass
-
         split_texts = text_splitter.split_text(text_content)
         vectorstore.add_texts(
             texts=split_texts,
@@ -437,30 +433,17 @@ async def process_docx(file: UploadFile, file_path: str = "") -> Dict:
             } for _ in split_texts],
             collection_name="docx_data"
         )
-
-        with engine.connect() as conn:
-            conn.execute(
-                text("""
-                INSERT INTO file_metadata 
-                (file_name, file_path, file_type, file_size)
-                VALUES (:name, :path, :type, :size)
-                """),
-                {
-                    "name": file_name,
-                    "path": file_path,
-                    "type": "docx",
-                    "size": len(content)
-                }
-            )
-            conn.commit()
-
-        text_path = os.path.join(
-            config.DOCUMENTS_DIR,
-            f"{file_name}.txt"
+        file_metadata = FileMetadata(
+            file_name=file_name,
+            file_path=file_path,
+            file_type="docx",
+            file_size=len(content)
         )
+        db.add(file_metadata)
+        db.commit()
+        text_path = os.path.join(config.DOCUMENTS_DIR, f"{file_name}.txt")
         with open(text_path, "w", encoding="utf-8") as f:
             f.write(text_content)
-
         return {
             "status": "success",
             "filename": file_name,
@@ -477,88 +460,69 @@ async def process_docx(file: UploadFile, file_path: str = "") -> Dict:
         if os.path.exists(temp_path):
             os.remove(temp_path)
 
-@app.post("/upload_xlsx", dependencies=[Depends(verify_api_key)])
-async def upload_xlsx(file: UploadFile = File(...)):
+@app.post("/upload_xlsx", dependencies=[Depends(get_current_user)])
+async def upload_xlsx(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only .xlsx files are supported"
         )
-    return await process_xlsx(file)
+    return await process_xlsx(file, db=db)
 
-@app.post("/upload_docx", dependencies=[Depends(verify_api_key)])
-async def upload_docx(file: UploadFile = File(...)):
+@app.post("/upload_docx", dependencies=[Depends(get_current_user)])
+async def upload_docx(file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not file.filename.lower().endswith(".docx"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only .docx files are supported"
         )
-    return await process_docx(file)
+    return await process_docx(file, db=db)
 
-@app.post("/upload_folder", dependencies=[Depends(verify_api_key)])
-async def upload_folder(zip_file: UploadFile = File(...)):
-    """Загрузка и обработка ZIP-архива с файлами"""
+@app.post("/upload_folder", dependencies=[Depends(get_current_user)])
+async def upload_folder(zip_file: UploadFile = File(...), db: Session = Depends(get_db)):
     if not zip_file.filename.lower().endswith(".zip"):
-        raise HTTPException(
-            status_code=400,
-            detail="Only ZIP archives are supported"
-        )
-
+        raise HTTPException(status_code=400, detail="Only ZIP archives are supported")
     temp_dir = f"temp_{os.urandom(4).hex()}"
     os.makedirs(temp_dir, exist_ok=True)
-
     try:
-        # Читаем содержимое ZIP-файла в память
         content = await zip_file.read()
         if len(content) > config.MAX_FILE_SIZE:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail="ZIP file size exceeds maximum allowed size"
             )
-
-        # Используем BytesIO для работы с ZIP в памяти
         with zipfile.ZipFile(BytesIO(content)) as zip_ref:
-            # Получаем список файлов, исправляя кодировку имен
             file_list = []
             for file_info in zip_ref.infolist():
                 try:
-                    # Пытаемся исправить кодировку имени файла
                     corrected_filename = file_info.filename.encode('cp437').decode('utf-8')
                 except:
                     corrected_filename = file_info.filename
-
-                # Пропускаем служебные файлы MacOS и директории
-                if not corrected_filename.startswith('__MACOSX/') and not corrected_filename.startswith('._') and not corrected_filename.endswith('/'):
+                if not corrected_filename.startswith('__MACOSX/') and not corrected_filename.startswith(
+                        '._') and not corrected_filename.endswith('/'):
                     file_list.append((corrected_filename, file_info))
-
-            # Обрабатываем файлы
             results = []
             for filename, file_info in file_list:
                 try:
-                    # Создаем корректные пути для извлечения
                     safe_filename = filename.replace('/', '_')
                     extract_path = os.path.join(temp_dir, safe_filename)
-
-                    # Извлекаем файл
                     with zip_ref.open(file_info) as source, open(extract_path, 'wb') as target:
                         shutil.copyfileobj(source, target)
-
-                    # Определяем относительный путь
                     rel_path = os.path.dirname(filename)
-
-                    # Обрабатываем файл
                     if filename.lower().endswith(".xlsx"):
                         with open(extract_path, "rb") as f:
                             result = await process_xlsx(
                                 UploadFile(filename=os.path.basename(filename), file=BytesIO(f.read())),
-                                rel_path
+                                rel_path,
+                                db
                             )
                             results.append(result)
                     elif filename.lower().endswith(".docx"):
                         with open(extract_path, "rb") as f:
                             result = await process_docx(
                                 UploadFile(filename=os.path.basename(filename), file=BytesIO(f.read())),
-                                rel_path
+                                rel_path,
+                                db
                             )
                             results.append(result)
                 except Exception as e:
@@ -568,56 +532,36 @@ async def upload_folder(zip_file: UploadFile = File(...)):
                         "filename": filename,
                         "error": str(e)
                     })
-
-        return {
-            "message": "Folder processing completed",
-            "results": results
-        }
+        return {"message": "Folder processing completed", "results": results}
     except zipfile.BadZipFile:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid ZIP file format"
-        )
+        raise HTTPException(status_code=400, detail="Invalid ZIP file format")
     except Exception as e:
         logger.error(f"Folder upload failed: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Processing error: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Processing error: {str(e)}")
     finally:
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir, ignore_errors=True)
 
-@app.get("/file_metadata", dependencies=[Depends(verify_api_key)])
-async def get_file_metadata(path: str = None, file_type: str = None):
-    """Получение метаданных файлов"""
-    query = "SELECT * FROM file_metadata WHERE 1=1"
-    params = {}
+@app.get("/file_metadata", dependencies=[Depends(get_current_user)])
+async def get_file_metadata(path: str = None, file_type: str = None, db: Session = Depends(get_db)):
+    query = db.query(FileMetadata)
     if path:
-        query += " AND file_path = :path"
-        params["path"] = path
+        query = query.filter(FileMetadata.file_path == path)
     if file_type:
-        query += " AND file_type = :file_type"
-        params["file_type"] = file_type.lower()
+        query = query.filter(FileMetadata.file_type == file_type.lower())
+    return [row.__dict__ for row in query.all()]
 
-    with engine.connect() as conn:
-        result = conn.execute(text(query), params)
-        return [dict(row) for row in result]
-
-@app.post("/search_docs", dependencies=[Depends(verify_api_key)])
+@app.post("/search_docs", dependencies=[Depends(get_current_user)])
 async def search_documents(query: str, path: str = None):
-    """Поиск по документам с фильтром по пути"""
     filters = {"file_type": "docx"}
     if path:
         filters["source"] = path
-
     results = vectorstore.similarity_search(
         query,
         k=5,
         filter=filters,
         collection_name="docx_data"
     )
-
     return [
         {
             "content": doc.page_content,
@@ -627,93 +571,81 @@ async def search_documents(query: str, path: str = None):
         for doc in results
     ]
 
-@app.post("/query", dependencies=[Depends(verify_api_key)])
-async def query(
-        request: Request,
-        question: str = Form(...),
-        model: str = Form("gemini")
-):
-    try:
-        if cached := get_cached_response(question, model):
-            return templates.TemplateResponse("index.html", {
-                "request": request,
-                "answer": cached["answer"],
-                "question": question,
-                "model": model
-            })
-
-        # Получение таблиц и LLM
-        table_names = get_table_names()
-        if not table_names:
-            return templates.TemplateResponse("index.html", {
-                "request": request,
-                "answer": "No tables found. Please upload data first.",
-                "question": question,
-                "model": model
-            })
-
-        llm = get_llm(model)
-        agent = create_sql_agent_wrapper(llm, db, table_names)
-        answer = agent.run(question)
-
-        # Кэширование результата
-        cache_response(question, model, {"answer": answer})
-
-        return templates.TemplateResponse("index.html", {
-            "request": request,
-            "answer": answer,
-            "question": question,
-            "model": model
-        })
-
-    except Exception as e:
-        logger.exception(f"Query failed: {e}")
-        return templates.TemplateResponse("index.html", {
-            "request": request,
-            "answer": f"Error: {str(e)}",
-            "question": question,
-            "model": model
-        })
-
 @app.websocket("/ws/query")
-async def websocket_query(websocket: WebSocket):
+async def websocket_query(websocket: WebSocket, db: Session = Depends(get_db)):
     await websocket.accept()
     try:
+        token = websocket.headers.get("authorization", "").replace("Bearer ", "")
+        if not token:
+            await websocket.send_json({
+                "type": "error",
+                "message": "JWT token is missing",
+                "status": "error"
+            })
+            return
+        try:
+            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            username: str = payload.get("sub")
+            if username is None:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "Invalid token",
+                    "status": "error"
+                })
+                return
+        except jwt.PyJWTError:
+            await websocket.send_json({
+                "type": "error",
+                "message": "Invalid JWT token",
+                "status": "error"
+            })
+            return
+        user = db.query(User).filter(User.username == username).first()
+        if not user:
+            await websocket.send_json({
+                "type": "error",
+                "message": "User not found",
+                "status": "error"
+            })
+            return
         data = await websocket.receive_json()
         question = data["question"]
         model = data.get("model", "gemini")
-
         await websocket.send_json({"type": "progress", "message": "Обработка запроса..."})
-
         if cached := get_cached_response(question, model):
+            # Парсим ответ из кэша в HTML
+            html_content = markdown.markdown(cached["answer"], extensions=['extra', 'nl2br'])
             await websocket.send_json({
                 "type": "answer",
                 "answer": cached["answer"],
+                "html_answer": html_content,
                 "status": "complete"
             })
             return
-
-        table_names = get_table_names()
+        table_names = get_table_names(db)
         if not table_names:
             await websocket.send_json({
                 "type": "answer",
                 "answer": "No tables found. Please upload data first.",
+                "html_answer": "<p>No tables found. Please upload data first.</p>",
                 "status": "complete"
             })
             return
-
         llm = get_llm(model)
         agent = create_sql_agent_wrapper(llm, db, table_names)
         agent.callbacks = [WebSocketCallbackHandler(websocket)]
-
         answer = agent.run(question)
+        # Парсим ответ в HTML
+        html_content = markdown.markdown(answer, extensions=['extra', 'nl2br'])
         cache_response(question, model, {"answer": answer})
-
         await websocket.send_json({
             "type": "answer",
             "answer": answer,
+            "html_answer": html_content,
             "status": "complete"
         })
+    except WebSocketDisconnect:
+        logger.info("WebSocket disconnected")
     except Exception as e:
         logger.exception(f"WebSocket query failed: {e}")
         await websocket.send_json({
@@ -723,3 +655,78 @@ async def websocket_query(websocket: WebSocket):
         })
     finally:
         await websocket.close()
+
+@app.post("/chats", dependencies=[Depends(get_current_user)])
+async def create_chat(title: str = Form(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    chat = Chat(title=title, user_id=current_user.id)
+    db.add(chat)
+    db.commit()
+    db.refresh(chat)
+    return {"chat_id": chat.id, "title": chat.title}
+
+@app.get("/chats", dependencies=[Depends(get_current_user)])
+def list_chats(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    chats = db.query(Chat).filter(Chat.user_id == current_user.id).order_by(Chat.created_at.desc()).all()
+    return [{"id": c.id, "title": c.title} for c in chats]
+
+@app.get("/chats/{chat_id}/messages", dependencies=[Depends(get_current_user)])
+async def get_chat_messages(chat_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == current_user.id).first()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+    return [
+        {
+            "sender": m.sender,
+            "content": m.content,
+            "html_content": markdown.markdown(m.content, extensions=['extra', 'nl2br']),
+            "timestamp": m.timestamp.isoformat()
+        } for m in chat.messages
+    ]
+
+@app.post("/chats/{chat_id}/messages", dependencies=[Depends(get_current_user)])
+async def send_message(chat_id: int, message: str = Form(...), model: str = Form("chatgpt"),
+                      db_session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    chat = db_session.query(Chat).filter(Chat.id == chat_id, Chat.user_id == current_user.id).first()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    user_msg = Message(chat_id=chat.id, sender="user", content=message)
+    db_session.add(user_msg)
+    db_session.commit()
+
+    # Подготовка истории
+    messages = db_session.query(Message).filter(Message.chat_id == chat.id).order_by(Message.timestamp).all()
+    context = [{"role": "system", "content": "Ты — полезный помощник, помогающий анализировать данные."}]
+    for msg in messages:
+        role = "user" if msg.sender == "user" else "assistant"
+        context.append({"role": role, "content": msg.content})
+
+    # Получаем список таблиц
+    table_names = get_table_names(db_session)
+    if not table_names:
+        raise HTTPException(status_code=400, detail="No tables found. Please upload data first.")
+
+    # Создаем SQL-агент с глобальным db (SQLDatabase)
+    llm = get_llm(model)
+    agent = create_sql_agent_wrapper(llm, db, table_names)
+
+    # Формируем запрос с учетом контекста чата
+    query = f"Вопрос: {message}\n\nИстория чата:\n" + "\n".join(
+        f"{msg.sender}: {msg.content}" for msg in messages
+    )
+
+    # Выполняем запрос через SQL-агент
+    try:
+        response = agent.run(query)
+        ai_content = str(response)
+        # Парсим ответ в HTML
+        html_content = markdown.markdown(ai_content, extensions=['extra', 'nl2br'])
+    except Exception as e:
+        logger.error(f"Error processing query with SQL agent: {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
+
+    ai_msg = Message(chat_id=chat.id, sender="ai", content=ai_content)
+    db_session.add(ai_msg)
+    db_session.commit()
+
+    return {"reply": ai_content, "reply_html": html_content}
