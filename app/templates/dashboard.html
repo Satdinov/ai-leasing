@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+    <!-- Меню -->
+    <div class="md:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
+        <h2 class="text-lg font-semibold mb-4">Меню</h2>
+        <ul class="space-y-2">
+            <li><a href="/dashboard" class="block px-3 py-2 rounded-md bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100">Главная</a></li>
+            <li><a href="/upload" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Загрузка файлов</a></li>
+            <li><a href="/files" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Мои файлы</a></li>
+        </ul>
+    </div>
+
+    <!-- Чаты -->
+    <div class="md:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
+        <h2 class="text-lg font-semibold mb-4">Чаты</h2>
+        <button onclick="createChat()" class="mb-2 bg-green-500 text-white px-3 py-1 rounded-md">➕ Новый чат</button>
+        <ul id="chats" class="space-y-2"></ul>
+    </div>
+
+    <!-- Чат-сообщения -->
+    <div class="md:col-span-2" id="chat-panel" style="display: none">
+        <div id="messages" class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 h-96 overflow-y-auto">
+            <h2 class="text-xl font-semibold mb-4">Сообщения</h2>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+            <div class="mb-4">
+                <label for="model" class="block text-sm font-medium mb-1">Модель</label>
+                <select id="model" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700">
+                    <option value="chatgpt">ChatGPT</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="gemini">Gemini</option>
+                </select>
+            </div>
+
+            <textarea id="input" rows="3" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 mb-2" placeholder="Ваш вопрос..."></textarea>
+            <div class="flex gap-2">
+                <button id="send-btn" onclick="sendMessage()" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-md">Отправить</button>
+                <button id="reset-btn" onclick="resetContext()" class="bg-gray-500 hover:bg-gray-600 text-white p-2 rounded-md ml-2">Сбросить контекст</button>
+                <button id="cancel-btn" onclick="cancelRequest()" class="bg-red-500 hover:bg-red-600 text-white p-2 rounded-md hidden">Отмена</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentChatId = null;
+let currentController = null;
+
+async function loadChats() {
+    const res = await fetch('/chats');
+    const chats = await res.json();
+    const list = document.getElementById('chats');
+    list.innerHTML = '';
+    chats.forEach(chat => {
+        const li = document.createElement('li');
+        li.className = 'cursor-pointer px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 bg-gray-50 dark:bg-gray-900';
+        li.textContent = chat.title;
+        li.onclick = () => openChat(chat.id);
+        list.appendChild(li);
+    });
+}
+
+async function createChat() {
+    const title = prompt("Введите название чата:");
+    if (!title) return;
+    const res = await fetch('/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ title })
+    });
+    const chat = await res.json();
+    await loadChats();
+    await openChat(chat.chat_id);
+}
+
+async function openChat(chatId) {
+    currentChatId = chatId;
+    document.getElementById('chat-panel').style.display = 'block';
+    const res = await fetch(`/chats/${chatId}/messages`);
+    const messages = await res.json();
+    messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));  // <-- добавляем сортировку
+    const box = document.getElementById('messages');
+    box.innerHTML = '';
+    messages.forEach(m => {
+        const div = document.createElement('div');
+        div.className = m.sender === 'user' ? 'text-right mb-4' : 'text-left mb-4';
+        const bubble = document.createElement('div');
+        bubble.className = 'inline-block max-w-full px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700';
+        bubble.innerHTML = `<div class="prose dark:prose-invert">${m.html_content || m.content}</div>`;
+        div.appendChild(bubble);
+        box.appendChild(div);
+    });
+    box.scrollTop = box.scrollHeight;
+}
+
+function cancelRequest() {
+    if (currentController) {
+        currentController.abort();
+        currentController = null;
+        document.getElementById('cancel-btn').classList.add('hidden');
+        document.getElementById('send-btn').disabled = false;
+    }
+}
+
+async function sendMessage() {
+    const input = document.getElementById('input');
+    const message = input.value;
+    const model = document.getElementById('model').value;
+    if (!message || !currentChatId) return;
+
+    const box = document.getElementById('messages');
+
+    // 👤 Показываем сообщение пользователя сразу
+    const userDiv = document.createElement('div');
+    userDiv.className = 'text-right mb-4';
+    const userBubble = document.createElement('div');
+    userBubble.className = 'inline-block max-w-full px-4 py-2 rounded-lg bg-blue-200 dark:bg-blue-700 text-blue-900 dark:text-blue-100';
+    userBubble.innerHTML = `<div class="prose dark:prose-invert">${message}</div>`;
+    userDiv.appendChild(userBubble);
+    box.appendChild(userDiv);
+    box.scrollTop = box.scrollHeight;
+
+    // Очищаем поле ввода
+    input.value = '';
+
+    // Показ индикатора загрузки
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'text-left mb-4';
+    loadingDiv.id = 'loading-message';
+    loadingDiv.innerHTML = '<div class="inline-block max-w-full px-4 py-2 rounded-lg bg-yellow-100 dark:bg-yellow-800 text-yellow-900 dark:text-yellow-100 animate-pulse">Формируется ответ...</div>';
+    box.appendChild(loadingDiv);
+    box.scrollTop = box.scrollHeight;
+
+    const controller = new AbortController();
+    currentController = controller;
+
+    document.getElementById('send-btn').disabled = true;
+    document.getElementById('cancel-btn').classList.remove('hidden');
+
+    try {
+        const res = await fetch(`/chats/${currentChatId}/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ message, model }),
+            signal: controller.signal
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json();
+            let errMsg = "Неизвестная ошибка.";
+            if (res.status === 402 && errorData?.error?.message) {
+                errMsg = errorData.error.message;
+            } else if (errorData?.error?.message) {
+                errMsg = errorData.error.message;
+            }
+
+            // Удалить "Формируется ответ..."
+            const loading = document.getElementById('loading-message');
+            if (loading) loading.remove();
+
+            // Показать сообщение об ошибке как от агента
+            const agentDiv = document.createElement('div');
+            agentDiv.className = 'text-left mb-4';
+            const agentBubble = document.createElement('div');
+            agentBubble.className = 'inline-block max-w-full px-4 py-2 rounded-lg bg-red-200 dark:bg-red-800 text-red-900 dark:text-red-100';
+            agentBubble.innerHTML = `<div class="prose dark:prose-invert">${errMsg}</div>`;
+            agentDiv.appendChild(agentBubble);
+            box.appendChild(agentDiv);
+            box.scrollTop = box.scrollHeight;
+
+            throw new Error(errMsg);
+        }
+
+        const data = await res.json();
+        document.getElementById('input').value = '';
+
+        // подождать и показать ответ
+        setTimeout(() => openChat(currentChatId), 1000); // либо чуть позже
+
+        // Удаляем "Формируется ответ..."
+        const loading = document.getElementById('loading-message');
+        if (loading) loading.remove();
+
+        // 👇 Показываем ответ агента отдельно
+        const agentDiv = document.createElement('div');
+        agentDiv.className = 'text-left mb-4';
+        const agentBubble = document.createElement('div');
+        agentBubble.className = 'inline-block max-w-full px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-black dark:text-white';
+        agentBubble.innerHTML = `<div class="prose dark:prose-invert">${data.html_content || data.content}</div>`;
+        agentDiv.appendChild(agentBubble);
+        box.appendChild(agentDiv);
+
+        box.scrollTop = box.scrollHeight;
+    } catch (error) {
+        console.warn('Запрос прерван или ошибка:', error);
+        const loading = document.getElementById('loading-message');
+        if (loading) loading.innerHTML = '<div class="text-red-500">Ошибка при получении ответа</div>';
+    } finally {
+        document.getElementById('cancel-btn').classList.add('hidden');
+        document.getElementById('send-btn').disabled = false;
+        currentController = null;
+    }
+}
+
+async function resetContext() {
+    if (!currentChatId) return;
+
+    if (!confirm("Вы уверены, что хотите сбросить весь контекст этого чата? История сообщений будет удалена.")) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/chats/${currentChatId}/reset`, {
+            method: 'POST'
+        });
+
+        if (!res.ok) {
+            const error = await res.json();
+            alert(`Ошибка при сбросе контекста: ${error.detail || 'Неизвестная ошибка'}`);
+            return;
+        }
+
+        // Обновить сообщения — очистить чат
+        const box = document.getElementById('messages');
+        box.innerHTML = '<h2 class="text-xl font-semibold mb-4">Сообщения</h2><div class="italic text-gray-500">Контекст сброшен, начните новый диалог.</div>';
+
+    } catch (e) {
+        alert('Ошибка при сбросе контекста: ' + e.message);
+    }
+}
+
+// init
+loadChats();
+</script>
+{% endblock %}

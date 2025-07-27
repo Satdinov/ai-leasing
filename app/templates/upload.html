@@ -1,0 +1,193 @@
+<!-- templates/upload.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+    <!-- Боковая панель -->
+    <div class="md:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
+        <h2 class="text-lg font-semibold mb-4">Меню</h2>
+        <ul class="space-y-2">
+            <li><a href="/dashboard" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Главная</a></li>
+            <li><a href="/upload" class="block px-3 py-2 rounded-md bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100">Загрузка файлов</a></li>
+            <li><a href="/files" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Мои файлы</a></li>
+        </ul>
+    </div>
+
+    <!-- Основное содержимое -->
+    <div class="md:col-span-3">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Загрузка файлов</h2>
+
+            <div class="mb-6">
+                <h3 class="text-lg font-medium mb-2">Одиночный файл</h3>
+                <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4">
+                    <form id="single-upload-form" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-1">Тип файла</label>
+                            <select name="file_type" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700">
+                                <option value="xlsx">Excel (.xlsx)</option>
+                                <option value="docx">Word (.docx)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-medium mb-1">Выберите файл</label>
+                            <input type="file" name="file" class="block w-full text-sm text-gray-500
+                                file:mr-4 file:py-2 file:px-4
+                                file:rounded-md file:border-0
+                                file:text-sm file:font-semibold
+                                file:bg-blue-50 file:text-blue-700 dark:file:bg-blue-900 dark:file:text-blue-100
+                                hover:file:bg-blue-100 dark:hover:file:bg-blue-800">
+                        </div>
+
+                        <button type="submit" class="w-full bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-md">
+                            Загрузить
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <div>
+                <h3 class="text-lg font-medium mb-2">Загрузка папки (ZIP)</h3>
+                <div class="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-4">
+                    <form id="folder-upload-form" class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-1">Выберите ZIP-архив</label>
+                            <input type="file" name="zip_file" accept=".zip" class="block w-full text-sm text-gray-500
+                                file:mr-4 file:py-2 file:px-4
+                                file:rounded-md file:border-0
+                                file:text-sm file:font-semibold
+                                file:bg-blue-50 file:text-blue-700 dark:file:bg-blue-900 dark:file:text-blue-100
+                                hover:file:bg-blue-100 dark:hover:file:bg-blue-800">
+                        </div>
+
+                        <button type="submit" class="w-full bg-green-500 hover:bg-green-600 text-white p-2 rounded-md">
+                            Загрузить архив
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div id="upload-status" class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-4">Статус загрузки</h2>
+            <div id="status-messages" class="space-y-2"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('single-upload-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const formData = new FormData();
+    const fileInput = e.target.elements.file;
+    const fileType = e.target.elements.file_type.value;
+
+    if (fileInput.files.length === 0) {
+        alert('Пожалуйста, выберите файл');
+        return;
+    }
+
+    formData.append('file', fileInput.files[0]);
+
+    const statusEl = document.getElementById('status-messages');
+    statusEl.innerHTML = '<div class="p-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100 rounded-md">Загрузка файла...</div>';
+
+    try {
+        const token = localStorage.getItem('access_token');
+        let endpoint = '/files/upload_docx';
+        if (fileType === 'xlsx') {
+            endpoint = '/files/upload_xlsx';
+        }
+
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.detail || 'Ошибка загрузки');
+        }
+
+        statusEl.innerHTML = `
+            <div class="p-2 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-100 rounded-md">
+                Файл "${data.filename}" успешно загружен
+            </div>
+        `;
+
+    } catch (error) {
+        statusEl.innerHTML = `
+            <div class="p-2 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-100 rounded-md">
+                Ошибка: ${error.message}
+            </div>
+        `;
+    }
+});
+
+document.getElementById('folder-upload-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const formData = new FormData();
+    const fileInput = e.target.elements.zip_file;
+
+    if (fileInput.files.length === 0) {
+        alert('Пожалуйста, выберите ZIP-архив');
+        return;
+    }
+
+    formData.append('zip_file', fileInput.files[0]);
+
+    const statusEl = document.getElementById('status-messages');
+    statusEl.innerHTML = '<div class="p-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100 rounded-md">Загрузка и обработка архива...</div>';
+
+    try {
+        const token = localStorage.getItem('access_token');
+        const response = await fetch('/files/upload_folder', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.detail || 'Ошибка загрузки');
+        }
+
+        let messages = '';
+        data.results.forEach(result => {
+            if (result.status === 'success') {
+                messages += `
+                    <div class="p-2 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-100 rounded-md">
+                        Файл "${result.filename}" успешно обработан
+                    </div>
+                `;
+            } else {
+                messages += `
+                    <div class="p-2 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-100 rounded-md">
+                        Ошибка обработки "${result.filename}": ${result.error}
+                    </div>
+                `;
+            }
+        });
+
+        statusEl.innerHTML = messages;
+
+    } catch (error) {
+        statusEl.innerHTML = `
+            <div class="p-2 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-100 rounded-md">
+                Ошибка: ${error.message}
+            </div>
+        `;
+    }
+});
+</script>
+{% endblock %}
