@@ -54,7 +54,7 @@
             }
 
             try {
-                const regResponse = await fetch('/register', {
+                const regResponse = await fetch('/auth/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: `username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}`

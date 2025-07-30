@@ -8,7 +8,7 @@ from database import get_db
 from datetime import timedelta
 
 router = APIRouter(tags=["auth"])
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="app/templates")
 
 @router.get("/login")
 async def login_page(request: Request):

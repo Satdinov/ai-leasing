@@ -8,7 +8,7 @@ from services.file_service import process_xlsx, process_docx
 from config import Config
 from database import get_db
 from models import FileMetadata
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 import os
 

@@ -5,7 +5,7 @@ from models import User
 from auth import get_current_user
 
 router = APIRouter(tags=["root"])
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="app/templates")
 
 @router.get("/")
 async def root(request: Request):

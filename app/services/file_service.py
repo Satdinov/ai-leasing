@@ -8,7 +8,7 @@ from docx import Document
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 from models import FileMetadata
 from config import Config
