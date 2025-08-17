@@ -2,48 +2,68 @@
 
 {% block content %}
 <div class="space-y-6">
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <a href="/check-inn" class="block bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-            <h3 class="text-xl font-semibold mb-2">Проверка контрагента</h3>
-            <p class="text-gray-600 dark:text-gray-400">Быстрая проверка контрагента по ИНН через сервис Checko.</p>
-        </a>
-    </div>
-
     <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
         <h2 class="text-xl font-semibold mb-4">Формирование Заявки на лизинг</h2>
         <form id="application-form">
+
             <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
                 <legend class="px-2 font-semibold">Данные Лизингополучателя</legend>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input name="lessee_company" placeholder="Полное наименование" class="p-2 border rounded-md dark:bg-gray-700" required>
-                    <input name="lessee_inn" placeholder="ИНН" class="p-2 border rounded-md dark:bg-gray-700" required>
-                    <input name="lessee_legal_address" placeholder="Юридический адрес" class="p-2 border rounded-md dark:bg-gray-700 col-span-2" required>
-                    <input name="lessee_actual_address" placeholder="Фактический адрес (место стоянки)" class="p-2 border rounded-md dark:bg-gray-700 col-span-2" required>
-                    <input name="lessee_director" placeholder="ФИО Директора (в род. падеже, напр. Иванова И.И.)" class="p-2 border rounded-md dark:bg-gray-700" required>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
+                    <div>
+                        <label class="text-sm font-medium">Полное наименование</label>
+                        <input name="lessee_company" placeholder="Общество с ограниченной ответственностью «Лизингополучатель»" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                    </div>
+                    <div>
+                        <label class="text-sm font-medium">ИНН</label>
+                        <input name="lessee_inn" placeholder="10 или 12 цифр" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="text-sm font-medium">Юридический адрес</label>
+                        <input name="lessee_legal_address" placeholder="Город, улица, дом" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="text-sm font-medium">Фактический адрес</label>
+                        <input name="lessee_actual_address" placeholder="Город, улица, дом" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="text-sm font-medium">ФИО Директора</label>
+                        <input name="lessee_director" placeholder="Иванов Иван Иванович" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                    </div>
                 </div>
             </fieldset>
 
             <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
                 <legend class="px-2 font-semibold">Предметы лизинга и условия</legend>
                  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <input name="asset_term" type="number" placeholder="Общий срок лизинга (мес.)" class="p-2 border rounded-md dark:bg-gray-700" required>
-                    <input name="advance_payment_percent" type="number" placeholder="Аванс (%)" class="p-2 border rounded-md dark:bg-gray-700" required>
-                </div>
-                <div id="assets-list" class="space-y-2">
+                    <div>
+                        <label class="text-sm font-medium">Общий срок лизинга (мес.)</label>
+                        <input name="asset_term" type="number" placeholder="36" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
                     </div>
-                <button type="button" id="add-asset-btn" class="mt-2 text-sm bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded-md">+ Добавить предмет лизинга</button>
+                    <div>
+                        <label class="text-sm font-medium">Аванс (%)</label>
+                        <input name="advance_payment_percent" type="number" placeholder="20" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                    </div>
+                </div>
+                <div id="assets-list"></div>
+                <button type="button" id="add-asset-btn" class="mt-4 text-sm bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded-md">+ Добавить предмет лизинга</button>
             </fieldset>
 
             <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
                 <legend class="px-2 font-semibold">Поставщики</legend>
-                <div id="suppliers-list" class="space-y-2"></div>
-                <button type="button" id="add-supplier-btn" class="mt-2 text-sm bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded-md">+ Добавить поставщика</button>
+                <div id="suppliers-list"></div>
+                <button type="button" id="add-supplier-btn" class="mt-4 text-sm bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded-md">+ Добавить поставщика</button>
             </fieldset>
 
             <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
                 <legend class="px-2 font-semibold">Поручители</legend>
-                <div id="guarantors-list" class="space-y-2"></div>
-                <button type="button" id="add-guarantor-btn" class="mt-2 text-sm bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded-md">+ Добавить поручителя</button>
+                <div id="guarantors-list"></div>
+                <button type="button" id="add-guarantor-btn" class="mt-4 text-sm bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded-md">+ Добавить поручителя</button>
+            </fieldset>
+
+            <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
+                <legend class="px-2 font-semibold">Предметы залога</legend>
+                <div id="pledges-list"></div>
+                <button type="button" id="add-pledge-btn" class="mt-4 text-sm bg-indigo-500 hover:bg-indigo-600 text-white py-1 px-3 rounded-md">+ Добавить предмет залога</button>
             </fieldset>
 
             <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg">Сформировать и скачать Заявку</button>
@@ -52,16 +72,49 @@
 </div>
 
 <script>
-    // --- Скрипт для проверки ИНН (без изменений) ---
-
-    // --- ✅ ПОЛНОСТЬЮ ОБНОВЛЕННЫЙ СКРИПТ для формы Заявки ---
     const applicationForm = document.getElementById('application-form');
 
-    // Функция-хелпер для создания динамических списков
-    function setupDynamicList(listId, buttonId, templateCallback) {
+    function formatNumberWithSpaces(value) {
+        let num = value.toString().replace(/[^\d]/g, '');
+        return num.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1 ');
+    }
+
+    applicationForm.addEventListener('input', (e) => {
+        if (e.target.name && (e.target.name.includes('total_cost') || e.target.name.includes('market_value'))) {
+            e.target.value = formatNumberWithSpaces(e.target.value);
+        }
+    });
+
+    function setupDynamicList(listId, buttonId, templateCallback, isOptional = false) {
         const listContainer = document.getElementById(listId);
         const addButton = document.getElementById(buttonId);
         let itemCount = 0;
+
+        function renumberItems() {
+            const items = listContainer.querySelectorAll('.dynamic-entry');
+            items.forEach((item, index) => {
+                const count = index + 1;
+                const header = item.querySelector('h4');
+                if (header) {
+                    header.textContent = header.textContent.replace(/№\d+/, `№${count}`);
+                }
+                item.querySelectorAll('input').forEach(input => {
+                    input.name = input.name.replace(/_\d+$/, `_${count}`);
+                });
+                if (count === 1) {
+                    item.classList.remove('pt-4', 'mt-4', 'border-t');
+                } else {
+                    item.classList.add('pt-4', 'mt-4', 'border-t');
+                }
+            });
+        }
+
+        listContainer.addEventListener('click', (e) => {
+            if (e.target && e.target.classList.contains('delete-item-btn')) {
+                e.target.closest('.dynamic-entry').remove();
+                renumberItems();
+            }
+        });
 
         function addFields() {
             itemCount++;
@@ -69,40 +122,69 @@
             div.className = 'dynamic-entry';
             div.innerHTML = templateCallback(itemCount);
             listContainer.appendChild(div);
+            renumberItems();
         }
 
         addButton.addEventListener('click', addFields);
-        addFields(); // Добавляем один элемент по умолчанию
-        return () => itemCount; // Возвращаем функцию, которая отдает текущее количество
+
+        if (!isOptional) {
+            addFields();
+        }
+
+        return () => listContainer.querySelectorAll('.dynamic-entry').length;
     }
 
-    // Настраиваем список Предметов лизинга
+    const deleteButtonTemplate = `<button type="button" class="delete-item-btn text-red-500 hover:text-red-700 text-sm font-bold">Удалить</button>`;
+
+    // ✅ ОБНОВЛЕНО: Возвращены уникальные имена полей (напр. `asset_name_1`)
     const getAssetCount = setupDynamicList('assets-list', 'add-asset-btn', (count) => `
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-2 border-t pt-2 mt-2">
-            <input name="asset_name_${count}" placeholder="Наименование" class="md:col-span-2 p-2 border rounded-md dark:bg-gray-700" required>
-            <input name="asset_quantity_${count}" type="number" value="1" placeholder="Кол-во" class="p-2 border rounded-md dark:bg-gray-700" required>
-            <input name="asset_delivery_time_${count}" type="number" placeholder="Срок поставки (дней)" class="p-2 border rounded-md dark:bg-gray-700" required>
-            <input name="asset_total_cost_${count}" placeholder="Общая стоимость (формат: 1 500 000)" class="p-2 border rounded-md dark:bg-gray-700" required>
+        <div class="flex justify-between items-center mb-2">
+            <h4 class="font-semibold">Предмет лизинга №${count}</h4>
+            ${count > 1 ? deleteButtonTemplate : ''}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-x-4 gap-y-2">
+            <div class="md:col-span-2"><label class="text-sm font-medium">Наименование</label><input name="asset_name_${count}" class="w-full p-2 border rounded-md dark:bg-gray-700" required></div>
+            <div><label class="text-sm font-medium">Кол-во</label><input name="asset_quantity_${count}" type="number" value="1" class="w-full p-2 border rounded-md dark:bg-gray-700" required></div>
+            <div><label class="text-sm font-medium">Срок поставки (дней)</label><input name="asset_delivery_time_${count}" type="number" class="w-full p-2 border rounded-md dark:bg-gray-700" required></div>
+            <div class="md:col-span-4"><label class="text-sm font-medium">Общая стоимость</label><input name="asset_total_cost_${count}" placeholder="1 500 000" class="w-full p-2 border rounded-md dark:bg-gray-700" required></div>
         </div>
     `);
 
-    // Настраиваем список Поставщиков
     const getSupplierCount = setupDynamicList('suppliers-list', 'add-supplier-btn', (count) => `
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-2 border-t pt-2 mt-2">
-            <input name="supplier_company_${count}" placeholder="Наименование поставщика" class="md:col-span-2 p-2 border rounded-md dark:bg-gray-700" required>
-            <input name="supplier_inn_${count}" placeholder="ИНН" class="p-2 border rounded-md dark:bg-gray-700" required>
-            <input name="supplier_address_${count}" placeholder="Юр. адрес" class="md:col-span-4 p-2 border rounded-md dark:bg-gray-700" required>
+        <div class="flex justify-between items-center mb-2">
+            <h4 class="font-semibold">Поставщик №${count}</h4>
+            ${count > 1 ? deleteButtonTemplate : ''}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
+            <div><label class="text-sm font-medium">Наименование</label><input name="supplier_company_${count}" class="w-full p-2 border rounded-md dark:bg-gray-700" required></div>
+            <div><label class="text-sm font-medium">ИНН</label><input name="supplier_inn_${count}" class="w-full p-2 border rounded-md dark:bg-gray-700" required></div>
+            <div class="md:col-span-2"><label class="text-sm font-medium">Юр. адрес</label><input name="supplier_address_${count}" class="w-full p-2 border rounded-md dark:bg-gray-700" required></div>
         </div>
     `);
 
-    // Настраиваем список Поручителей
     const getGuarantorCount = setupDynamicList('guarantors-list', 'add-guarantor-btn', (count) => `
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-2 border-t pt-2 mt-2">
-            <input name="guarantor_full_name_${count}" placeholder="ФИО поручителя" class="p-2 border rounded-md dark:bg-gray-700" required>
-            <input name="guarantor_inn_${count}" placeholder="ИНН" class="p-2 border rounded-md dark:bg-gray-700" required>
-            <input name="guarantor_contacts_${count}" placeholder="Телефон / email" class="p-2 border rounded-md dark:bg-gray-700" required>
+        <div class="flex justify-between items-center mb-2">
+            <h4 class="font-semibold">Поручитель №${count}</h4>
+            ${count > 1 ? deleteButtonTemplate : ''}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-2">
+            <div><label class="text-sm font-medium">ФИО</label><input name="guarantor_full_name_${count}" class="w-full p-2 border rounded-md dark:bg-gray-700" required></div>
+            <div><label class="text-sm font-medium">ИНН</label><input name="guarantor_inn_${count}" class="w-full p-2 border rounded-md dark:bg-gray-700" required></div>
+            <div><label class="text-sm font-medium">Контакты</label><input name="guarantor_contacts_${count}" placeholder="Телефон / email" class="w-full p-2 border rounded-md dark:bg-gray-700" required></div>
         </div>
     `);
+
+    const getPledgeCount = setupDynamicList('pledges-list', 'add-pledge-btn', (count) => `
+        <div class="flex justify-between items-center mb-2">
+            <h4 class="font-semibold">Предмет залога №${count}</h4>
+            ${deleteButtonTemplate}
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-x-4 gap-y-2">
+            <div><label class="text-sm font-medium">Наименование</label><input name="pledge_name_${count}" class="w-full p-2 border rounded-md dark:bg-gray-700"></div>
+            <div><label class="text-sm font-medium">Количество</label><input name="pledge_quantity_${count}" type="number" value="1" class="w-full p-2 border rounded-md dark:bg-gray-700"></div>
+            <div><label class="text-sm font-medium">Рыночная стоимость (руб.)</label><input name="pledge_market_value_${count}" placeholder="1 500 000" class="w-full p-2 border rounded-md dark:bg-gray-700"></div>
+        </div>
+    `, true);
 
     applicationForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -117,14 +199,19 @@
             lessee_director: data.lessee_director,
             asset_term: parseInt(data.asset_term),
             advance_payment_percent: parseInt(data.advance_payment_percent),
-            assets: [], suppliers: [], guarantors: []
+            assets: [], suppliers: [], guarantors: [], pledges: []
         };
 
-        for (let i = 1; i <= getAssetCount(); i++) payload.assets.push({ name: data[`asset_name_${i}`], quantity: parseInt(data[`asset_quantity_${i}`]), delivery_time: parseInt(data[`asset_delivery_time_${i}`]), total_cost: data[`asset_total_cost_${i}`] });
+        // ✅ ОБНОВЛЕНО: Логика сбора данных из полей с уникальными именами
+        for (let i = 1; i <= getAssetCount(); i++) payload.assets.push({ name: data[`asset_name_${i}`], quantity: parseInt(data[`asset_quantity_${i}`]), delivery_time: parseInt(data[`asset_delivery_time_${i}`]), total_cost: data[`asset_total_cost_${i}`].replace(/\s/g, '') });
         for (let i = 1; i <= getSupplierCount(); i++) payload.suppliers.push({ company: data[`supplier_company_${i}`], inn: data[`supplier_inn_${i}`], address: data[`supplier_address_${i}`] });
         for (let i = 1; i <= getGuarantorCount(); i++) payload.guarantors.push({ full_name: data[`guarantor_full_name_${i}`], inn: data[`guarantor_inn_${i}`], contacts: data[`guarantor_contacts_${i}`] });
+        for (let i = 1; i <= getPledgeCount(); i++) {
+             if (data[`pledge_name_${i}`]) {
+                payload.pledges.push({ name: data[`pledge_name_${i}`], quantity: parseInt(data[`pledge_quantity_${i}`]), market_value: data[`pledge_market_value_${i}`].replace(/\s/g, '') });
+            }
+        }
 
-        // ... (код для fetch и скачивания файла остается без изменений) ...
         try {
             const response = await fetch('/api/documents/generate/application', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             if (!response.ok) { const error = await response.json(); throw new Error(error.detail || 'Ошибка на сервере'); }
@@ -133,9 +220,8 @@
             const a = document.createElement('a');
             a.style.display = 'none';
             a.href = url;
-            // Устанавливаем имя файла для скачивания
             const disposition = response.headers.get('Content-Disposition');
-            let filename = `Заявка_${payload.lessee_inn}.docx`; // Имя по умолчанию
+            let filename = `Заявка_${payload.lessee_inn}.docx`;
             if (disposition && disposition.indexOf('attachment') !== -1) {
                 const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/;
                 const matches = filenameRegex.exec(disposition);

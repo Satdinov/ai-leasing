@@ -32,6 +32,10 @@ class Guarantor(BaseModel):
     inn: str
     contacts: str
 
+class Pledge(BaseModel):
+    name: str
+    quantity: int
+    market_value: str
 
 class DealData(BaseModel):
     lessee_company: str
@@ -39,18 +43,17 @@ class DealData(BaseModel):
     lessee_legal_address: str
     lessee_actual_address: str
     lessee_director: str
-    # Поле asset_name больше не нужно, так как есть список
     asset_term: int
     advance_payment_percent: int
-    # Используем новые модели списков
     suppliers: List[Supplier]
     assets: List[Asset]
     guarantors: List[Guarantor]
-
+    pledges: List[Pledge]
 
 @router.post("/generate/application")
 async def generate_application_route(deal_data: DealData, current_user: User = Depends(get_current_user)):
     deal_data_dict = deal_data.model_dump()
+    print(deal_data_dict)
     file_path = generate_application(deal_data_dict)
 
     if not file_path:
