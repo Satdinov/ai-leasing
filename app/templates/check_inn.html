@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+    <h2 class="text-xl font-semibold mb-4">Проверка контрагента по ИНН</h2>
+
+    <form id="inn-check-form" class="flex flex-col sm:flex-row gap-2">
+        <input type="text" id="inn-input" class="flex-grow p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" placeholder="Введите ИНН организации (10 или 12 цифр)" required>
+        <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-md px-6">
+            Проверить
+        </button>
+    </form>
+
+    <div id="result-container" class="mt-6">
+        </div>
+</div>
+
+<script>
+document.getElementById('inn-check-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    // ... (код валидации и индикатора загрузки остается без изменений) ...
+    const innInput = document.getElementById('inn-input');
+    const resultContainer = document.getElementById('result-container');
+    const inn = innInput.value.trim();
+
+    if (!/^\d{10}$|^\d{12}$/.test(inn)) {
+        resultContainer.innerHTML = `<div class="p-3 bg-red-100 ...">...</div>`;
+        return;
+    }
+    resultContainer.innerHTML = `<div class="p-3 bg-yellow-100 ...">Проверяем...</div>`;
+
+    try {
+        // ✅ URL изменен на новый API эндпоинт
+        const response = await fetch('/api/inn/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ inn: inn })
+        });
+        // ... (остальной JavaScript код для обработки ответа остается без изменений) ...
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.detail || 'Неизвестная ошибка сервера');
+        }
+
+        let resultHtml = '<dl class="divide-y divide-gray-200 dark:divide-gray-700">';
+        for (const [key, value] of Object.entries(data)) {
+            resultHtml += `
+                <div class="py-3 grid grid-cols-3 gap-4">
+                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">${key}</dt>
+                    <dd class="text-sm col-span-2">${value}</dd>
+                </div>
+            `;
+        }
+        resultHtml += '</dl>';
+        resultContainer.innerHTML = resultHtml;
+
+    } catch (error) {
+        resultContainer.innerHTML = `<div class="p-3 bg-red-100 ..."><b>Ошибка:</b> ${error.message}</div>`;
+    }
+});
+</script>
+{% endblock %}

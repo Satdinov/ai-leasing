@@ -6,8 +6,8 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
-from models import User
-from database import get_db
+from app.models import User
+from app.database import get_db
 
 # Настройки
 SECRET_KEY = "your-secret-key"  # Замените на безопасный ключ (например, сгенерируйте через os.urandom(24).hex())

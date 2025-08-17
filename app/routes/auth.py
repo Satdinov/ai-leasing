@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Form, Request, re
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from auth import create_access_token, authenticate_user, get_password_hash, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
-from models import User
-from database import get_db
+from app.auth import create_access_token, authenticate_user, get_password_hash, SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.models import User
+from app.database import get_db
 from datetime import timedelta
 
 router = APIRouter(tags=["auth"])
@@ -54,6 +54,6 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 
 @router.get("/logout")
 async def logout():
-    response = responses.RedirectResponse(url="/login")
+    response = responses.RedirectResponse(url="/auth/login")
     response.delete_cookie("access_token")
     return response
