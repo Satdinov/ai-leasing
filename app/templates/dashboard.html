@@ -1,87 +1,99 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-    <div class="lg:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-        <div class="flex justify-between items-center mb-4">
-            <h2 class="text-xl font-semibold">Формирование Заявки на лизинг</h2>
-            <input type="hidden" id="current-application-id" value="">
-        </div>
-        <form id="application-form">
-
-            <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
-                <legend class="px-2 font-semibold">Данные Лизингополучателя</legend>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
-                    <div>
-                        <label class="text-sm font-medium">Полное наименование</label>
-                        <input name="lessee_company" placeholder="Общество с ограниченной ответственностью «Лизингополучатель»" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
-                    </div>
-                    <div>
-                        <label class="text-sm font-medium">ИНН</label>
-                        <input name="lessee_inn" placeholder="10 или 12 цифр" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
-                    </div>
-                    <div class="md:col-span-2">
-                        <label class="text-sm font-medium">Юридический адрес</label>
-                        <input name="lessee_legal_address" placeholder="Город, улица, дом" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
-                    </div>
-                    <div class="md:col-span-2">
-                        <label class="text-sm font-medium">Фактический адрес</label>
-                        <input name="lessee_actual_address" placeholder="Город, улица, дом" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
-                    </div>
-                    <div class="md:col-span-2">
-                        <label class="text-sm font-medium">ФИО Директора</label>
-                        <input name="lessee_director" placeholder="Иванов Иван Иванович" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
-                    </div>
-                </div>
-            </fieldset>
-
-            <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
-                <legend class="px-2 font-semibold">Предметы лизинга и условия</legend>
-                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                    <div>
-                        <label class="text-sm font-medium">Общий срок лизинга (мес.)</label>
-                        <input name="asset_term" type="number" placeholder="36" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
-                    </div>
-                    <div>
-                        <label class="text-sm font-medium">Аванс (%)</label>
-                        <input name="advance_payment_percent" type="number" placeholder="20" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
-                    </div>
-                </div>
-                <div id="assets-list"></div>
-                <button type="button" id="add-asset-btn" class="mt-4 text-sm bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded-md">+ Добавить предмет лизинга</button>
-            </fieldset>
-
-            <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
-                <legend class="px-2 font-semibold">Поставщики</legend>
-                <div id="suppliers-list"></div>
-                <button type="button" id="add-supplier-btn" class="mt-4 text-sm bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded-md">+ Добавить поставщика</button>
-            </fieldset>
-
-            <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
-                <legend class="px-2 font-semibold">Поручители</legend>
-                <div id="guarantors-list"></div>
-                <button type="button" id="add-guarantor-btn" class="mt-4 text-sm bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded-md">+ Добавить поручителя</button>
-            </fieldset>
-
-            <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
-                <legend class="px-2 font-semibold">Предметы залога (необязательно)</legend>
-                <div id="pledges-list"></div>
-                <button type="button" id="add-pledge-btn" class="mt-4 text-sm bg-indigo-500 hover:bg-indigo-600 text-white py-1 px-3 rounded-md">+ Добавить предмет залога</button>
-            </fieldset>
-        </form>
-
-        <div class="mt-6 flex flex-col sm:flex-row gap-2">
-            <button id="new-app-btn" type="button" class="w-full sm:w-auto flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Новая заявка</button>
-            <button id="save-app-btn" type="button" class="w-full sm:w-auto flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Сохранить</button>
-            <button id="submit-form-btn" type="submit" form="application-form" class="w-full sm:w-auto flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg">Сформировать и скачать</button>
-        </div>
-        <div id="autosave-status" class="text-xs text-gray-500 mt-2 text-right h-4"></div>
+{# ✅ Changed grid-cols-4 to grid-cols-5 to create a new layout ratio #}
+<div class="grid grid-cols-1 md:grid-cols-5 gap-6">
+    <div class="md:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 h-min">
+        <h2 class="text-lg font-semibold mb-4">Меню</h2>
+        <ul class="space-y-2">
+            <li><a href="/dashboard" class="block px-3 py-2 rounded-md bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100">Заявки</a></li>
+            <li><a href="/chat" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Чат с ИИ</a></li>
+            <li><a href="/upload" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Загрузка файлов</a></li>
+            <li><a href="/files" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Мои файлы</a></li>
+        </ul>
     </div>
 
-    <div class="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-        <h2 class="text-xl font-semibold mb-4">Мои заявки</h2>
-        <div id="applications-list" class="space-y-2 max-h-[600px] overflow-y-auto">
+    {# ✅ Changed md:col-span-3 to md:col-span-4 to make this section wider #}
+    <div class="md:col-span-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Формирование Заявки на лизинг</h2>
+                <input type="hidden" id="current-application-id" value="">
+            </div>
+            <form id="application-form">
+
+                <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
+                    <legend class="px-2 font-semibold">Данные Лизингополучателя</legend>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
+                        <div>
+                            <label class="text-sm font-medium">Полное наименование</label>
+                            <input name="lessee_company" placeholder="ООО «Лизингополучатель»" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium">ИНН</label>
+                            <input name="lessee_inn" placeholder="10 или 12 цифр" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="text-sm font-medium">Юридический адрес</label>
+                            <input name="lessee_legal_address" placeholder="Город, улица, дом" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="text-sm font-medium">Фактический адрес</label>
+                            <input name="lessee_actual_address" placeholder="Город, улица, дом" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="text-sm font-medium">ФИО Директора</label>
+                            <input name="lessee_director" placeholder="Иванов Иван Иванович" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
+                    <legend class="px-2 font-semibold">Предметы лизинга и условия</legend>
+                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="text-sm font-medium">Общий срок лизинга (мес.)</label>
+                            <input name="asset_term" type="number" placeholder="36" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                        </div>
+                        <div>
+                            <label class="text-sm font-medium">Аванс (%)</label>
+                            <input name="advance_payment_percent" type="number" placeholder="20" class="w-full p-2 border rounded-md dark:bg-gray-700" required>
+                        </div>
+                    </div>
+                    <div id="assets-list"></div>
+                    <button type="button" id="add-asset-btn" class="mt-4 text-sm bg-blue-500 hover:bg-blue-600 text-white py-1 px-3 rounded-md">+ Добавить предмет лизинга</button>
+                </fieldset>
+
+                <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
+                    <legend class="px-2 font-semibold">Поставщики</legend>
+                    <div id="suppliers-list"></div>
+                    <button type="button" id="add-supplier-btn" class="mt-4 text-sm bg-green-500 hover:bg-green-600 text-white py-1 px-3 rounded-md">+ Добавить поставщика</button>
+                </fieldset>
+
+                <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
+                    <legend class="px-2 font-semibold">Поручители</legend>
+                    <div id="guarantors-list"></div>
+                    <button type="button" id="add-guarantor-btn" class="mt-4 text-sm bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-3 rounded-md">+ Добавить поручителя</button>
+                </fieldset>
+
+                <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
+                    <legend class="px-2 font-semibold">Предметы залога (необязательно)</legend>
+                    <div id="pledges-list"></div>
+                    <button type="button" id="add-pledge-btn" class="mt-4 text-sm bg-indigo-500 hover:bg-indigo-600 text-white py-1 px-3 rounded-md">+ Добавить предмет залога</button>
+                </fieldset>
+            </form>
+
+            <div class="mt-6 flex flex-col sm:flex-row gap-2">
+                <button id="new-app-btn" type="button" class="w-full sm:w-auto flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Новая заявка</button>
+                <button id="save-app-btn" type="button" class="w-full sm:w-auto flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Сохранить</button>
+                <button id="submit-form-btn" type="submit" form="application-form" class="w-full sm:w-auto flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg">Сформировать и скачать</button>
+            </div>
+            <div id="autosave-status" class="text-xs text-gray-500 mt-2 text-right h-4"></div>
+            </div>
+        <div class="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-4">Мои заявки</h2>
+            <div id="applications-list" class="space-y-2 max-h-[600px] overflow-y-auto">
+            </div>
         </div>
     </div>
 </div>

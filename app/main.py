@@ -7,6 +7,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from app.routes.auth import router as auth_router
 from app.routes.root import router as root_router
+from app.routes.files import router as files_router
+from app.routes.chats import router as chats_router
 from app.routes.inn_checker import router as inn_checker_router
 from app.routes.document_generator import router as doc_generator_router
 from app.routes.application import router as applications_router
@@ -30,6 +32,8 @@ app.include_router(auth_router, prefix="/auth")
 app.include_router(inn_checker_router)
 app.include_router(doc_generator_router)
 app.include_router(applications_router)
+app.include_router(files_router, prefix="/files")
+app.include_router(chats_router, prefix="/chats")
 app.include_router(root_router)
 
 

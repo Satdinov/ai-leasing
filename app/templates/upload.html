@@ -1,19 +1,17 @@
-<!-- templates/upload.html -->
 {% extends "base.html" %}
 
 {% block content %}
 <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-    <!-- Боковая панель -->
     <div class="md:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
         <h2 class="text-lg font-semibold mb-4">Меню</h2>
         <ul class="space-y-2">
-            <li><a href="/dashboard" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Главная</a></li>
+            <li><a href="/dashboard" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Заявки</a></li>
+            <li><a href="/chat" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Чат с ИИ</a></li>
             <li><a href="/upload" class="block px-3 py-2 rounded-md bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100">Загрузка файлов</a></li>
             <li><a href="/files" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Мои файлы</a></li>
         </ul>
     </div>
 
-    <!-- Основное содержимое -->
     <div class="md:col-span-3">
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
             <h2 class="text-xl font-semibold mb-4">Загрузка файлов</h2>
@@ -24,7 +22,7 @@
                     <form id="single-upload-form" class="space-y-4">
                         <div>
                             <label class="block text-sm font-medium mb-1">Тип файла</label>
-                            <select name="file_type" class="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700">
+                            <select name="file_type" class="w-full p-2 border rounded-md dark:bg-gray-700">
                                 <option value="xlsx">Excel (.xlsx)</option>
                                 <option value="docx">Word (.docx)</option>
                             </select>
@@ -95,7 +93,6 @@ document.getElementById('single-upload-form').addEventListener('submit', async (
     statusEl.innerHTML = '<div class="p-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100 rounded-md">Загрузка файла...</div>';
 
     try {
-        const token = localStorage.getItem('access_token');
         let endpoint = '/files/upload_docx';
         if (fileType === 'xlsx') {
             endpoint = '/files/upload_xlsx';
@@ -103,9 +100,7 @@ document.getElementById('single-upload-form').addEventListener('submit', async (
 
         const response = await fetch(endpoint, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            },
+            // ✅ ХЕДЕРЫ АВТОРИЗАЦИИ УДАЛЕНЫ - БРАУЗЕР ВСЕ СДЕЛАЕТ САМ
             body: formData
         });
 
@@ -147,19 +142,16 @@ document.getElementById('folder-upload-form').addEventListener('submit', async (
     statusEl.innerHTML = '<div class="p-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100 rounded-md">Загрузка и обработка архива...</div>';
 
     try {
-        const token = localStorage.getItem('access_token');
         const response = await fetch('/files/upload_folder', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            },
+            // ✅ ХЕДЕРЫ АВТОРИЗАЦИИ УДАЛЕНЫ
             body: formData
         });
 
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.detail || 'Ошибка загрузки');
+            throw new Error(data.detail || 'Ошибка загрузки архива');
         }
 
         let messages = '';
@@ -167,24 +159,23 @@ document.getElementById('folder-upload-form').addEventListener('submit', async (
             if (result.status === 'success') {
                 messages += `
                     <div class="p-2 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-100 rounded-md">
-                        Файл "${result.filename}" успешно обработан
+                        Файл "${result.filename}" успешно обработан.
                     </div>
                 `;
             } else {
                 messages += `
                     <div class="p-2 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-100 rounded-md">
-                        Ошибка обработки "${result.filename}": ${result.error}
+                        Ошибка обработки файла "${result.filename}": ${result.error}
                     </div>
                 `;
             }
         });
-
         statusEl.innerHTML = messages;
 
     } catch (error) {
         statusEl.innerHTML = `
             <div class="p-2 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-100 rounded-md">
-                Ошибка: ${error.message}
+                <b>Критическая ошибка:</b> ${error.message}
             </div>
         `;
     }
