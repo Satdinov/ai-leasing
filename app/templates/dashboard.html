@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="space-y-6">
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-        <h2 class="text-xl font-semibold mb-4">Формирование Заявки на лизинг</h2>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+    <div class="lg:col-span-2 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-semibold">Формирование Заявки на лизинг</h2>
+            <input type="hidden" id="current-application-id" value="">
+        </div>
         <form id="application-form">
 
             <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
@@ -61,34 +65,48 @@
             </fieldset>
 
             <fieldset class="border dark:border-gray-600 p-4 rounded-md mb-4">
-                <legend class="px-2 font-semibold">Предметы залога</legend>
+                <legend class="px-2 font-semibold">Предметы залога (необязательно)</legend>
                 <div id="pledges-list"></div>
                 <button type="button" id="add-pledge-btn" class="mt-4 text-sm bg-indigo-500 hover:bg-indigo-600 text-white py-1 px-3 rounded-md">+ Добавить предмет залога</button>
             </fieldset>
-
-            <button type="submit" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg">Сформировать и скачать Заявку</button>
         </form>
+
+        <div class="mt-6 flex flex-col sm:flex-row gap-2">
+            <button id="new-app-btn" type="button" class="w-full sm:w-auto flex-1 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg">Новая заявка</button>
+            <button id="save-app-btn" type="button" class="w-full sm:w-auto flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Сохранить</button>
+            <button id="submit-form-btn" type="submit" form="application-form" class="w-full sm:w-auto flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg">Сформировать и скачать</button>
+        </div>
+        <div id="autosave-status" class="text-xs text-gray-500 mt-2 text-right h-4"></div>
+    </div>
+
+    <div class="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+        <h2 class="text-xl font-semibold mb-4">Мои заявки</h2>
+        <div id="applications-list" class="space-y-2 max-h-[600px] overflow-y-auto">
+        </div>
     </div>
 </div>
 
+
 <script>
+document.addEventListener('DOMContentLoaded', () => {
+
     const applicationForm = document.getElementById('application-form');
+    const applicationsListEl = document.getElementById('applications-list');
+    const currentAppIdInput = document.getElementById('current-application-id');
+    const saveBtn = document.getElementById('save-app-btn');
+    const newBtn = document.getElementById('new-app-btn');
+    const autosaveStatusEl = document.getElementById('autosave-status');
+
+    let autosaveTimeout;
 
     function formatNumberWithSpaces(value) {
-        let num = value.toString().replace(/[^\d]/g, '');
-        return num.replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1 ');
+        if (!value) return '';
+        return value.toString().replace(/\s/g, '').replace(/(\d)(?=(\d{3})+(?!\d))/g, '$1 ');
     }
-
-    applicationForm.addEventListener('input', (e) => {
-        if (e.target.name && (e.target.name.includes('total_cost') || e.target.name.includes('market_value'))) {
-            e.target.value = formatNumberWithSpaces(e.target.value);
-        }
-    });
 
     function setupDynamicList(listId, buttonId, templateCallback, isOptional = false) {
         const listContainer = document.getElementById(listId);
         const addButton = document.getElementById(buttonId);
-        let itemCount = 0;
 
         function renumberItems() {
             const items = listContainer.querySelectorAll('.dynamic-entry');
@@ -98,9 +116,12 @@
                 if (header) {
                     header.textContent = header.textContent.replace(/№\d+/, `№${count}`);
                 }
-                item.querySelectorAll('input').forEach(input => {
-                    input.name = input.name.replace(/_\d+$/, `_${count}`);
+                item.querySelectorAll('input, select, textarea').forEach(input => {
+                    const nameParts = input.name.split('_');
+                    const name = nameParts.slice(0, -1).join('_');
+                    input.name = `${name}_${count}`;
                 });
+
                 if (count === 1) {
                     item.classList.remove('pt-4', 'mt-4', 'border-t');
                 } else {
@@ -117,7 +138,7 @@
         });
 
         function addFields() {
-            itemCount++;
+            const itemCount = listContainer.querySelectorAll('.dynamic-entry').length + 1;
             const div = document.createElement('div');
             div.className = 'dynamic-entry';
             div.innerHTML = templateCallback(itemCount);
@@ -127,17 +148,22 @@
 
         addButton.addEventListener('click', addFields);
 
+        const controller = {
+            add: addFields,
+            getCount: () => listContainer.querySelectorAll('.dynamic-entry').length,
+            clear: () => { listContainer.innerHTML = ''; }
+        };
+
         if (!isOptional) {
-            addFields();
+           if (listContainer.children.length === 0) controller.add();
         }
 
-        return () => listContainer.querySelectorAll('.dynamic-entry').length;
+        return controller;
     }
 
     const deleteButtonTemplate = `<button type="button" class="delete-item-btn text-red-500 hover:text-red-700 text-sm font-bold">Удалить</button>`;
 
-    // ✅ ОБНОВЛЕНО: Возвращены уникальные имена полей (напр. `asset_name_1`)
-    const getAssetCount = setupDynamicList('assets-list', 'add-asset-btn', (count) => `
+    const assetsList = setupDynamicList('assets-list', 'add-asset-btn', (count) => `
         <div class="flex justify-between items-center mb-2">
             <h4 class="font-semibold">Предмет лизинга №${count}</h4>
             ${count > 1 ? deleteButtonTemplate : ''}
@@ -150,7 +176,7 @@
         </div>
     `);
 
-    const getSupplierCount = setupDynamicList('suppliers-list', 'add-supplier-btn', (count) => `
+    const suppliersList = setupDynamicList('suppliers-list', 'add-supplier-btn', (count) => `
         <div class="flex justify-between items-center mb-2">
             <h4 class="font-semibold">Поставщик №${count}</h4>
             ${count > 1 ? deleteButtonTemplate : ''}
@@ -162,7 +188,7 @@
         </div>
     `);
 
-    const getGuarantorCount = setupDynamicList('guarantors-list', 'add-guarantor-btn', (count) => `
+    const guarantorsList = setupDynamicList('guarantors-list', 'add-guarantor-btn', (count) => `
         <div class="flex justify-between items-center mb-2">
             <h4 class="font-semibold">Поручитель №${count}</h4>
             ${count > 1 ? deleteButtonTemplate : ''}
@@ -174,7 +200,7 @@
         </div>
     `);
 
-    const getPledgeCount = setupDynamicList('pledges-list', 'add-pledge-btn', (count) => `
+    const pledgesList = setupDynamicList('pledges-list', 'add-pledge-btn', (count) => `
         <div class="flex justify-between items-center mb-2">
             <h4 class="font-semibold">Предмет залога №${count}</h4>
             ${deleteButtonTemplate}
@@ -186,32 +212,172 @@
         </div>
     `, true);
 
-    applicationForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
+    const collectPayload = () => {
         const formData = new FormData(applicationForm);
         const data = Object.fromEntries(formData.entries());
-
         const payload = {
-            lessee_company: data.lessee_company,
-            lessee_inn: data.lessee_inn,
-            lessee_legal_address: data.lessee_legal_address,
-            lessee_actual_address: data.lessee_actual_address,
-            lessee_director: data.lessee_director,
-            asset_term: parseInt(data.asset_term),
-            advance_payment_percent: parseInt(data.advance_payment_percent),
+            lessee_company: data.lessee_company || '',
+            lessee_inn: data.lessee_inn || '',
+            lessee_legal_address: data.lessee_legal_address || '',
+            lessee_actual_address: data.lessee_actual_address || '',
+            lessee_director: data.lessee_director || '',
+            asset_term: parseInt(data.asset_term) || 0,
+            advance_payment_percent: parseInt(data.advance_payment_percent) || 0,
             assets: [], suppliers: [], guarantors: [], pledges: []
         };
-
-        // ✅ ОБНОВЛЕНО: Логика сбора данных из полей с уникальными именами
-        for (let i = 1; i <= getAssetCount(); i++) payload.assets.push({ name: data[`asset_name_${i}`], quantity: parseInt(data[`asset_quantity_${i}`]), delivery_time: parseInt(data[`asset_delivery_time_${i}`]), total_cost: data[`asset_total_cost_${i}`].replace(/\s/g, '') });
-        for (let i = 1; i <= getSupplierCount(); i++) payload.suppliers.push({ company: data[`supplier_company_${i}`], inn: data[`supplier_inn_${i}`], address: data[`supplier_address_${i}`] });
-        for (let i = 1; i <= getGuarantorCount(); i++) payload.guarantors.push({ full_name: data[`guarantor_full_name_${i}`], inn: data[`guarantor_inn_${i}`], contacts: data[`guarantor_contacts_${i}`] });
-        for (let i = 1; i <= getPledgeCount(); i++) {
+        for (let i = 1; i <= assetsList.getCount(); i++) payload.assets.push({ name: data[`asset_name_${i}`], quantity: parseInt(data[`asset_quantity_${i}`]), delivery_time: parseInt(data[`asset_delivery_time_${i}`]), total_cost: data[`asset_total_cost_${i}`].replace(/\s/g, '') });
+        for (let i = 1; i <= suppliersList.getCount(); i++) payload.suppliers.push({ company: data[`supplier_company_${i}`], inn: data[`supplier_inn_${i}`], address: data[`supplier_address_${i}`] });
+        for (let i = 1; i <= guarantorsList.getCount(); i++) payload.guarantors.push({ full_name: data[`guarantor_full_name_${i}`], inn: data[`guarantor_inn_${i}`], contacts: data[`guarantor_contacts_${i}`] });
+        for (let i = 1; i <= pledgesList.getCount(); i++) {
              if (data[`pledge_name_${i}`]) {
                 payload.pledges.push({ name: data[`pledge_name_${i}`], quantity: parseInt(data[`pledge_quantity_${i}`]), market_value: data[`pledge_market_value_${i}`].replace(/\s/g, '') });
             }
         }
+        return payload;
+    };
 
+    const populateForm = (data) => {
+        applicationForm.reset();
+        applicationForm.querySelector('[name="lessee_company"]').value = data.lessee_company || '';
+        applicationForm.querySelector('[name="lessee_inn"]').value = data.lessee_inn || '';
+        applicationForm.querySelector('[name="lessee_legal_address"]').value = data.lessee_legal_address || '';
+        applicationForm.querySelector('[name="lessee_actual_address"]').value = data.lessee_actual_address || '';
+        applicationForm.querySelector('[name="lessee_director"]').value = data.lessee_director || '';
+        applicationForm.querySelector('[name="asset_term"]').value = data.asset_term || '';
+        applicationForm.querySelector('[name="advance_payment_percent"]').value = data.advance_payment_percent || '';
+
+        const populateList = (listName, items, listController) => {
+            listController.clear();
+
+            items.forEach((item, index) => {
+                listController.add();
+                const entry = document.getElementById(`${listName}-list`).children[index];
+                for (const key in item) {
+                    const inputName = `${listName.slice(0, -1)}_${key}_${index + 1}`;
+                    const input = entry.querySelector(`[name="${inputName}"]`);
+                    if (input) {
+                        if (input.name.includes('total_cost') || input.name.includes('market_value')) {
+                             input.value = formatNumberWithSpaces(item[key]);
+                        } else {
+                            input.value = item[key];
+                        }
+                    }
+                }
+            });
+        };
+
+        populateList('assets', data.assets, assetsList);
+        populateList('suppliers', data.suppliers, suppliersList);
+        populateList('guarantors', data.guarantors, guarantorsList);
+        populateList('pledges', data.pledges, pledgesList);
+    };
+
+    const renderApplicationsList = async () => {
+        try {
+            const response = await fetch('/api/applications/');
+            if (!response.ok) throw new Error('Не удалось загрузить список заявок');
+            const applications = await response.json();
+
+            applicationsListEl.innerHTML = '';
+            if (applications.length === 0) {
+                applicationsListEl.innerHTML = '<p class="text-sm text-gray-500">Сохраненных заявок нет.</p>';
+                return;
+            }
+
+            applications.forEach(app => {
+                const appElement = document.createElement('div');
+                appElement.className = 'p-2 border rounded-md cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center';
+                appElement.dataset.id = app.id;
+                appElement.innerHTML = `
+                    <div>
+                        <p class="font-semibold text-sm">${app.title}</p>
+                        <p class="text-xs text-gray-500">Обновлено: ${app.updated_at}</p>
+                    </div>
+                    <button data-id="${app.id}" class="delete-app-btn text-red-500 hover:text-red-700 text-xs font-bold">Удалить</button>
+                `;
+                applicationsListEl.appendChild(appElement);
+            });
+        } catch (error) {
+            applicationsListEl.innerHTML = `<p class="text-red-500 text-sm">${error.message}</p>`;
+        }
+    };
+
+    saveBtn.addEventListener('click', async () => {
+        const payload = collectPayload();
+        const appId = currentAppIdInput.value;
+        const url = appId ? `/api/applications/${appId}` : '/api/applications/save';
+        const method = appId ? 'PUT' : 'POST';
+
+        try {
+            const response = await fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            if (!response.ok) throw new Error('Ошибка сохранения');
+            const result = await response.json();
+            currentAppIdInput.value = result.application_id;
+            await renderApplicationsList();
+            autosaveStatusEl.textContent = `Сохранено в ${new Date().toLocaleTimeString()}`;
+        } catch (error) {
+            autosaveStatusEl.textContent = `Ошибка сохранения: ${error.message}`;
+        }
+    });
+
+    newBtn.addEventListener('click', () => {
+        applicationForm.reset();
+        currentAppIdInput.value = '';
+        assetsList.clear();
+        suppliersList.clear();
+        guarantorsList.clear();
+        pledgesList.clear();
+        assetsList.add();
+        suppliersList.add();
+        guarantorsList.add();
+    });
+
+    applicationsListEl.addEventListener('click', async (e) => {
+        const target = e.target;
+        const appId = target.closest('[data-id]')?.dataset.id;
+
+        if (!appId) return;
+
+        if (target.classList.contains('delete-app-btn')) {
+            if (confirm('Вы уверены, что хотите удалить эту заявку?')) {
+                try {
+                    const response = await fetch(`/api/applications/${appId}`, { method: 'DELETE' });
+                    if (!response.ok) throw new Error('Ошибка удаления');
+                    await renderApplicationsList();
+                    if (currentAppIdInput.value === appId) newBtn.click();
+                } catch (error) {
+                    alert(error.message);
+                }
+            }
+        } else {
+            try {
+                const response = await fetch(`/api/applications/${appId}`);
+                if (!response.ok) throw new Error('Не удалось загрузить заявку');
+                const data = await response.json();
+                populateForm(data);
+                currentAppIdInput.value = appId;
+            } catch (error) {
+                alert(error.message);
+            }
+        }
+    });
+
+    applicationForm.addEventListener('input', (e) => {
+        if (e.target.name && (e.target.name.includes('total_cost') || e.target.name.includes('market_value'))) {
+            e.target.value = formatNumberWithSpaces(e.target.value);
+        }
+        clearTimeout(autosaveTimeout);
+        autosaveStatusEl.textContent = 'Есть несохраненные изменения...';
+        autosaveTimeout = setTimeout(() => saveBtn.click(), 10000);
+    });
+
+    applicationForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const payload = collectPayload();
         try {
             const response = await fetch('/api/documents/generate/application', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             if (!response.ok) { const error = await response.json(); throw new Error(error.detail || 'Ошибка на сервере'); }
@@ -239,5 +405,10 @@
             alert(`Ошибка при формировании файла: ${error.message}`);
         }
     });
+
+    renderApplicationsList();
+    newBtn.click();
+
+});
 </script>
 {% endblock %}

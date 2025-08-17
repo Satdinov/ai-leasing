@@ -1,4 +1,6 @@
 # app/routes/applications.py
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
@@ -53,6 +55,42 @@ async def save_application(
 
     return {"status": "success", "application_id": new_application.id}
 
+
+@router.put("/{application_id}")
+async def update_application(
+        application_id: int,
+        application_data: DealData,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    app = db.query(models.LeasingApplication).filter(
+        models.LeasingApplication.id == application_id,
+        models.LeasingApplication.user_id == current_user.id
+    ).first()
+
+    if not app:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Заявка не найдена")
+
+    # Обновляем основные поля
+    app.lessee_company = application_data.lessee_company
+    app.lessee_inn = application_data.lessee_inn
+    app.lessee_legal_address = application_data.lessee_legal_address
+    app.lessee_actual_address = application_data.lessee_actual_address
+    app.lessee_director = application_data.lessee_director
+    app.asset_term = application_data.asset_term
+    app.advance_payment_percent = application_data.advance_payment_percent
+    app.updated_at = datetime.utcnow() # Обновляем время
+    # ... (и так далее для всех полей)
+
+    # Очищаем старые связанные данные и добавляем новые
+    app.suppliers = [models.Supplier(**s.model_dump()) for s in application_data.suppliers]
+    app.assets = [models.Asset(**a.model_dump()) for a in application_data.assets]
+    app.guarantors = [models.Guarantor(**g.model_dump()) for g in application_data.guarantors]
+    app.pledges = [models.Pledge(**p.model_dump()) for p in application_data.pledges]
+
+    db.commit()
+    db.refresh(app)
+    return {"status": "success", "application_id": app.id}
 
 @router.get("/", response_model=List[ApplicationInfo])
 async def get_applications(

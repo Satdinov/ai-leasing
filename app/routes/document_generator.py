@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Optional
 import os
 from urllib.parse import quote
 
@@ -15,40 +15,40 @@ router = APIRouter(prefix="/api/documents", tags=["document_generator"])
 
 # ✅ НОВЫЕ И ОБНОВЛЕННЫЕ МОДЕЛИ
 class Supplier(BaseModel):
-    company: str
-    inn: str
-    address: str
+    company: Optional[str] = None
+    inn: Optional[str] = None
+    address: Optional[str] = None
 
 
 class Asset(BaseModel):
-    name: str
-    quantity: int
-    delivery_time: int
-    total_cost: str  # Используем строку, чтобы можно было передавать форматированные числа
+    name: Optional[str] = None
+    quantity: Optional[int] = None
+    delivery_time: Optional[int] = None
+    total_cost: Optional[str] = None
 
 
 class Guarantor(BaseModel):
-    full_name: str
-    inn: str
-    contacts: str
+    full_name: Optional[str] = None
+    inn: Optional[str] = None
+    contacts: Optional[str] = None
 
 class Pledge(BaseModel):
-    name: str
-    quantity: int
-    market_value: str
+    name: Optional[str] = None
+    quantity: Optional[int] = None
+    market_value: Optional[str] = None
 
 class DealData(BaseModel):
-    lessee_company: str
-    lessee_inn: str
-    lessee_legal_address: str
-    lessee_actual_address: str
-    lessee_director: str
-    asset_term: int
-    advance_payment_percent: int
-    suppliers: List[Supplier]
-    assets: List[Asset]
-    guarantors: List[Guarantor]
-    pledges: List[Pledge]
+    lessee_company: Optional[str] = None
+    lessee_inn: Optional[str] = None
+    lessee_legal_address: Optional[str] = None
+    lessee_actual_address: Optional[str] = None
+    lessee_director: Optional[str] = None
+    asset_term: Optional[int] = None
+    advance_payment_percent: Optional[int] = None
+    suppliers: List[Supplier] = []
+    assets: List[Asset] = []
+    guarantors: List[Guarantor] = []
+    pledges: List[Pledge] = []
 
 @router.post("/generate/application")
 async def generate_application_route(deal_data: DealData, current_user: User = Depends(get_current_user)):

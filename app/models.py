@@ -10,6 +10,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    applications = relationship("LeasingApplication", back_populates="user", cascade="all, delete-orphan")
 
 class LeasingApplication(Base):
     __tablename__ = "leasing_applications"
