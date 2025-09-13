@@ -11,6 +11,11 @@ class Config:
         f"{os.getenv('POSTGRES_HOST')}:{os.getenv('POSTGRES_PORT')}/{os.getenv('POSTGRES_DB')}"
     )
     PERSIST_DIRECTORY = "chroma_db"
+
+    SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
+    ALGORITHM = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
     CHUNK_SIZE = 1000
     CHUNK_OVERLAP = 200
     DOCUMENTS_DIR = "documents"

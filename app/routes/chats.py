@@ -13,7 +13,8 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
-from app.auth import ALGORITHM, SECRET_KEY, get_current_user
+from app.auth import get_current_user
+from app.config import Config
 from app.database import get_db
 from app.models import Chat, Message, User
 from app.services.chat_service import (
@@ -87,7 +88,7 @@ async def websocket_query(websocket: WebSocket, db: Session = Depends(get_db)):
     try:
         token = websocket.headers.get("authorization", "").replace("Bearer ", "")
         try:
-            jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+            jwt.decode(token, Config.SECRET_KEY, algorithms=[Config.ALGORITHM])
         except (jwt.PyJWTError, AttributeError):
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return

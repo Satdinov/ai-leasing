@@ -2,7 +2,6 @@ from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import app.models as models
@@ -10,17 +9,9 @@ from app.auth import get_current_user
 from app.database import get_db
 from app.models import User
 from app.routes.document_generator import DealData
+from app.schemas.schemas import ApplicationInfo
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
-
-
-class ApplicationInfo(BaseModel):
-    id: int
-    title: str
-    updated_at: str
-
-    class Config:
-        from_attributes = True
 
 
 @router.post("/save")

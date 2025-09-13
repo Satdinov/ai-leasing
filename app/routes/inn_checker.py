@@ -1,6 +1,6 @@
 import os
-import markdown
 
+import markdown
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -9,17 +9,13 @@ from sqlalchemy.orm import Session
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import User
+from app.schemas.schemas import InnRequest
 from app.services.delta_services import (
     find_delta_company_id,
     get_processed_delta_report,
 )
 from app.services.leasing_service import get_company_info_by_inn
 from app.utils import get_llm
-
-
-class InnRequest(BaseModel):
-    inn: str = Field(..., description="ИНН компании")
-
 
 router = APIRouter(prefix="/api/inn", tags=["inn_checker"])
 
@@ -72,19 +68,17 @@ async def get_delta_report_route(
 
 @router.post("/check-delta-ai")
 async def check_delta_with_ai_route(
-        request: InnCheckRequest,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user)
+    request: InnCheckRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Получает отчет из Дельты, анализирует его с помощью ИИ
     и возвращает готовое заключение.
     """
     try:
-        # Шаг 1: Получаем файл и его текстовое содержимое
         file_path, report_text = await get_processed_delta_report(request.inn, db)
 
-        # Шаг 2: Формируем промпт для AI
         ai_prompt = f"""
         **Роль:** Ты — ведущий риск-аналитик в лизинговой компании.
         **Задача:** На основе представленного отчета по компании (ИНН {request.inn}) подготовь краткое, но емкое аналитическое заключение для внутреннего использования.
@@ -106,25 +100,26 @@ async def check_delta_with_ai_route(
         ---
         """
 
-        # Шаг 3: Отправляем запрос в модель
-        llm = get_llm("chatgpt")  # или любая другая модель
+        llm = get_llm("chatgpt")
         ai_response = await llm.ainvoke(ai_prompt)
         ai_conclusion = ai_response.content
 
-        # Конвертируем в HTML для красивого отображения
-        html_conclusion = markdown.markdown(ai_conclusion, extensions=['extra', 'nl2br'])
+        html_conclusion = markdown.markdown(
+            ai_conclusion, extensions=["extra", "nl2br"]
+        )
 
         return {
             "is_success": True,
             "data": {
                 "Заключение ИИ-аналитика": html_conclusion,
-                "Скачать полный отчет": f"/reports/delta_report_clean_{request.inn}.docx"
+                "Скачать полный отчет": f"/reports/delta_report_clean_{request.inn}.docx",
             },
-            "source": "Дельта (AI-анализ)"
+            "source": "Дельта (AI-анализ)",
         }
 
     except HTTPException as e:
         raise e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Произошла ошибка на сервере: {str(e)}")
-
+        raise HTTPException(
+            status_code=500, detail=f"Произошла ошибка на сервере: {str(e)}"
+        )
