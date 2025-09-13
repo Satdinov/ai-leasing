@@ -211,3 +211,7 @@ data/
 /generated_documents/
 /documents/
 /app/document_templates/
+
+/.idea/
+.DS_Store
+chroma_db
