@@ -215,3 +215,4 @@ data/
 /.idea/
 .DS_Store
 chroma_db
+static
