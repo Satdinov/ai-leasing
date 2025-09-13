@@ -1,16 +1,22 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
 from datetime import datetime
 
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
+
 Base = declarative_base()
+
 
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
-    applications = relationship("LeasingApplication", back_populates="user", cascade="all, delete-orphan")
+    applications = relationship(
+        "LeasingApplication", back_populates="user", cascade="all, delete-orphan"
+    )
+
 
 class LeasingApplication(Base):
     __tablename__ = "leasing_applications"
@@ -29,12 +35,20 @@ class LeasingApplication(Base):
     advance_payment_percent = Column(Integer)
 
     user = relationship("User", back_populates="applications")
-    suppliers = relationship("Supplier", back_populates="application", cascade="all, delete-orphan")
-    assets = relationship("Asset", back_populates="application", cascade="all, delete-orphan")
-    guarantors = relationship("Guarantor", back_populates="application", cascade="all, delete-orphan")
-    pledges = relationship("Pledge", back_populates="application", cascade="all, delete-orphan")
+    suppliers = relationship(
+        "Supplier", back_populates="application", cascade="all, delete-orphan"
+    )
+    assets = relationship(
+        "Asset", back_populates="application", cascade="all, delete-orphan"
+    )
+    guarantors = relationship(
+        "Guarantor", back_populates="application", cascade="all, delete-orphan"
+    )
+    pledges = relationship(
+        "Pledge", back_populates="application", cascade="all, delete-orphan"
+    )
 
-# ✅ НОВЫЕ МОДЕЛИ ДЛЯ СВЯЗАННЫХ ДАННЫХ
+
 class Supplier(Base):
     __tablename__ = "suppliers"
     id = Column(Integer, primary_key=True, index=True)
@@ -43,6 +57,7 @@ class Supplier(Base):
     inn = Column(String)
     address = Column(String)
     application = relationship("LeasingApplication", back_populates="suppliers")
+
 
 class Asset(Base):
     __tablename__ = "assets"
@@ -54,6 +69,7 @@ class Asset(Base):
     total_cost = Column(String)
     application = relationship("LeasingApplication", back_populates="assets")
 
+
 class Guarantor(Base):
     __tablename__ = "guarantors"
     id = Column(Integer, primary_key=True, index=True)
@@ -62,6 +78,7 @@ class Guarantor(Base):
     inn = Column(String)
     contacts = Column(String)
     application = relationship("LeasingApplication", back_populates="guarantors")
+
 
 class Pledge(Base):
     __tablename__ = "pledges"
@@ -72,6 +89,7 @@ class Pledge(Base):
     market_value = Column(String)
     application = relationship("LeasingApplication", back_populates="pledges")
 
+
 class FileMetadata(Base):
     __tablename__ = "file_metadata"
     id = Column(Integer, primary_key=True, index=True)
@@ -81,6 +99,7 @@ class FileMetadata(Base):
     table_name = Column(String)
     file_size = Column(Integer)
     upload_time = Column(DateTime, default=datetime.utcnow)
+
 
 class Chat(Base):
     __tablename__ = "chats"
@@ -95,7 +114,16 @@ class Message(Base):
     __tablename__ = "messages"
     id = Column(Integer, primary_key=True)
     chat_id = Column(Integer, ForeignKey("chats.id"))
-    sender = Column(String)  # 'user' or 'ai'
+    sender = Column(String)
     content = Column(String, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
     chat = relationship("Chat", back_populates="messages")
+
+
+class DeltaReport(Base):
+    __tablename__ = "delta_reports"
+    id = Column(Integer, primary_key=True, index=True)
+    inn = Column(String, index=True, nullable=False)
+    report_type = Column(String)
+    report_data = Column(JSONB)
+    created_at = Column(DateTime, default=datetime.utcnow)

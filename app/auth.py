@@ -1,27 +1,29 @@
 from datetime import datetime, timedelta
-from fastapi import Request
 
 import jwt
-from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
+from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-from app.models import User
-from app.database import get_db
 
-# Настройки
-SECRET_KEY = "your-secret-key"  # Замените на безопасный ключ (например, сгенерируйте через os.urandom(24).hex())
+from app.database import get_db
+from app.models import User
+
+SECRET_KEY = "your-secret-key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
+
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
+
 def get_password_hash(password):
     return pwd_context.hash(password)
+
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
@@ -33,14 +35,17 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+
 def get_user(db: Session, username: str):
     return db.query(User).filter(User.username == username).first()
+
 
 def authenticate_user(db: Session, username: str, password: str):
     user = get_user(db, username)
     if not user or not verify_password(password, user.hashed_password):
         return False
     return user
+
 
 async def get_current_user(request: Request, db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
@@ -49,7 +54,7 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    token = request.cookies.get("access_token")  # 🟢 достаём токен из cookie
+    token = request.cookies.get("access_token")
     if not token:
         raise credentials_exception
 

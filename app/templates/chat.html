@@ -1,28 +1,35 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-    <div class="md:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
-        <h2 class="text-lg font-semibold mb-4">Меню</h2>
-        <ul class="space-y-2">
-            <li><a href="/dashboard" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Заявки</a></li>
-            <li><a href="/chat" class="block px-3 py-2 rounded-md bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100">Чат с ИИ</a></li>
-            <li><a href="/upload" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Загрузка файлов</a></li>
-            <li><a href="/files" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Мои файлы</a></li>
-        </ul>
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    {# ✅ Эта колонка теперь содержит и меню, и список чатов #}
+    <div class="lg:col-span-1 flex flex-col gap-6">
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
+            <h2 class="text-lg font-semibold mb-4">Меню</h2>
+            <ul class="space-y-2">
+                <li><a href="/dashboard" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Заявки</a></li>
+                <li><a href="/chat" class="block px-3 py-2 rounded-md bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-100">Чат с ИИ</a></li>
+                <li><a href="/upload" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Загрузка файлов</a></li>
+                <li><a href="/files" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Мои файлы</a></li>
+                <li><a href="/check-inn" class="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700">Проверить по ИНН</a></li>
+            </ul>
+        </div>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
+            <h2 class="text-lg font-semibold mb-4">Чаты</h2>
+            <button onclick="createChat()" class="mb-2 w-full bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md">➕ Новый чат</button>
+            <ul id="chats" class="space-y-2 max-h-[600px] overflow-y-auto"></ul>
+        </div>
     </div>
 
-    <div class="md:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
-        <h2 class="text-lg font-semibold mb-4">Чаты</h2>
-        <button onclick="createChat()" class="mb-2 w-full bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md">➕ Новый чат</button>
-        <ul id="chats" class="space-y-2 max-h-[600px] overflow-y-auto"></ul>
-    </div>
 
-    <div class="md:col-span-2" id="chat-panel" style="display: none">
-        <div id="messages" class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 h-96 overflow-y-auto">
+    {# ✅ Панель чата теперь занимает 2/3 ширины и растягивается на всю высоту #}
+    <div class="lg:col-span-2 flex flex-col h-[calc(100vh-10rem)]" id="chat-panel" style="display: none;">
+        {# ✅ Область сообщений теперь "растёт", занимая всё свободное место #}
+        <div id="messages" class="flex-grow bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6 overflow-y-auto">
             <h2 class="text-xl font-semibold mb-4">Сообщения</h2>
         </div>
 
+        {# Эта часть с полем ввода остаётся внизу #}
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
             <div class="mb-4">
                 <label for="model" class="block text-sm font-medium mb-1">Модель</label>
@@ -77,7 +84,7 @@ async function createChat() {
 
 async function openChat(chatId) {
     currentChatId = chatId;
-    document.getElementById('chat-panel').style.display = 'block';
+    document.getElementById('chat-panel').style.display = 'flex'; // ✅ Изменено на flex
     const res = await fetch(`/chats/${chatId}/messages`);
     const messages = await res.json();
     const box = document.getElementById('messages');

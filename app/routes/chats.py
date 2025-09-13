@@ -1,47 +1,77 @@
-# app/routes/chats.py
-import jwt
-from fastapi import APIRouter, Depends, HTTPException, status, Form, WebSocket, WebSocketDisconnect
-from sqlalchemy.orm import Session
-# ✅ Импортируем SYSTEM_PROMPT из сервиса
-from app.services.chat_service import create_chat, list_chats, get_chat_messages, send_message, vectorstore, \
-    SYSTEM_PROMPT
-from app.utils import get_cached_response, cache_response, get_llm  # ✅ Импортируем get_llm
-from app.database import get_db
-from app.models import User, Chat, Message
-from app.auth import get_current_user, SECRET_KEY, ALGORITHM
-import markdown
 import logging
+
+import jwt
+import markdown
+from fastapi import (
+    APIRouter,
+    Depends,
+    Form,
+    HTTPException,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
+from sqlalchemy.orm import Session
+
+from app.auth import ALGORITHM, SECRET_KEY, get_current_user
+from app.database import get_db
+from app.models import Chat, Message, User
+from app.services.chat_service import (
+    SYSTEM_PROMPT,
+    create_chat,
+    get_chat_messages,
+    list_chats,
+    send_message,
+    vectorstore,
+)
+from app.utils import get_llm
 
 router = APIRouter(tags=["chats"])
 logger = logging.getLogger(__name__)
 
 
-# ... (маршруты post, get, reset без изменений) ...
 @router.post("/")
-async def create_chat_route(title: str = Form(...), db: Session = Depends(get_db),
-                            current_user: User = Depends(get_current_user)):
+async def create_chat_route(
+    title: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     return create_chat(title, current_user.id, db)
 
 
 @router.get("/")
-async def list_chats_route(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def list_chats_route(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
     return list_chats(current_user.id, db)
 
 
 @router.get("/{chat_id}/messages")
-async def get_chat_messages_route(chat_id: int, db: Session = Depends(get_db),
-                                  current_user: User = Depends(get_current_user)):
+async def get_chat_messages_route(
+    chat_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     return get_chat_messages(chat_id, current_user.id, db)
 
 
 @router.post("/{chat_id}/messages")
-async def send_message_route(chat_id: int, message: str = Form(...), model: str = Form("chatgpt"),
-                             db_session: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def send_message_route(
+    chat_id: int,
+    message: str = Form(...),
+    model: str = Form("chatgpt"),
+    db_session: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     return await send_message(chat_id, message, model, current_user.id, db_session)
 
 
 @router.post("/{chat_id}/reset")
-def reset_chat_context(chat_id: int, user_id: int = Depends(get_current_user), db: Session = Depends(get_db)):
+def reset_chat_context(
+    chat_id: int,
+    user_id: int = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     chat = db.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id.id).first()
     if not chat:
         raise HTTPException(status_code=404, detail="Чат не найден")
@@ -56,8 +86,6 @@ async def websocket_query(websocket: WebSocket, db: Session = Depends(get_db)):
     await websocket.accept()
     try:
         token = websocket.headers.get("authorization", "").replace("Bearer ", "")
-        # ... (код авторизации без изменений) ...
-        # (Просто для примера, полная логика авторизации у вас уже есть)
         try:
             jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         except (jwt.PyJWTError, AttributeError):
@@ -67,9 +95,10 @@ async def websocket_query(websocket: WebSocket, db: Session = Depends(get_db)):
         data = await websocket.receive_json()
         question = data["question"]
         model = data.get("model", "gemini")
-        await websocket.send_json({"type": "progress", "message": "Идет поиск по документам..."})
+        await websocket.send_json(
+            {"type": "progress", "message": "Идет поиск по документам..."}
+        )
 
-        # ✅ Логика WebSocket теперь повторяет send_message
         results = vectorstore.similarity_search(query=question, k=5)
 
         context = "\n\n---\n\n".join([doc.page_content for doc in results])
@@ -79,17 +108,22 @@ async def websocket_query(websocket: WebSocket, db: Session = Depends(get_db)):
         ai_response = await llm.ainvoke(final_prompt)
         answer = ai_response.content
 
-        html_content = markdown.markdown(answer, extensions=['extra', 'nl2br'])
-        await websocket.send_json({
-            "type": "answer", "answer": answer, "html_answer": html_content, "status": "complete"
-        })
+        html_content = markdown.markdown(answer, extensions=["extra", "nl2br"])
+        await websocket.send_json(
+            {
+                "type": "answer",
+                "answer": answer,
+                "html_answer": html_content,
+                "status": "complete",
+            }
+        )
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
     except Exception as e:
         logger.exception(f"WebSocket query failed: {e}")
-        await websocket.send_json({
-            "type": "error", "message": f"Ошибка: {str(e)}", "status": "error"
-        })
+        await websocket.send_json(
+            {"type": "error", "message": f"Ошибка: {str(e)}", "status": "error"}
+        )
     finally:
         await websocket.close()

@@ -4,61 +4,110 @@
 <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
     <h2 class="text-xl font-semibold mb-4">Проверка контрагента по ИНН</h2>
 
-    <form id="inn-check-form" class="flex flex-col sm:flex-row gap-2">
-        <input type="text" id="inn-input" class="flex-grow p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" placeholder="Введите ИНН организации (10 или 12 цифр)" required>
-        <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-md px-6">
-            Проверить
+    <div class="flex flex-col sm:flex-row gap-2">
+        <input type="text" id="inn-input" class="flex-grow p-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700" placeholder="Введите ИНН (10 или 12 цифр)" required>
+        <button id="check-checko-btn" class="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-md px-6">
+            Проверить (Checko)
         </button>
-    </form>
+        <button id="check-delta-ai-btn" class="bg-purple-500 hover:bg-purple-600 text-white p-2 rounded-md px-6">
+            Анализ (Дельта AI)
+        </button>
+    </div>
 
-    <div id="result-container" class="mt-6">
-        </div>
+    <div id="loading-indicator" class="mt-6 hidden p-3 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-100 rounded-md">
+        Получаем и анализируем отчет... Это может занять до минуты.
+    </div>
+    <div id="error-container" class="mt-6 hidden p-3 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-100 rounded-md"></div>
+    <div id="result-container" class="mt-6"></div>
 </div>
 
 <script>
-document.getElementById('inn-check-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
+const innInput = document.getElementById('inn-input');
+const checkoBtn = document.getElementById('check-checko-btn');
+// ✅ Обновленный ID кнопки
+const deltaAiBtn = document.getElementById('check-delta-ai-btn');
+const loadingEl = document.getElementById('loading-indicator');
+const errorEl = document.getElementById('error-container');
+const resultEl = document.getElementById('result-container');
 
-    // ... (код валидации и индикатора загрузки остается без изменений) ...
-    const innInput = document.getElementById('inn-input');
-    const resultContainer = document.getElementById('result-container');
+function renderResults(data, title) {
+    let resultHtml = `<h3 class="text-lg font-semibold mb-2">${title}</h3>`;
+    resultHtml += '<div class="prose dark:prose-invert max-w-none border dark:border-gray-600 rounded-md p-4">';
+
+    for (const [key, value] of Object.entries(data)) {
+        let displayValue;
+
+        // ✅ Специальная обработка для ссылок на скачивание
+        if (key.toLowerCase().includes('скачать') && typeof value === 'string' && value.startsWith('/')) {
+             displayValue = `<a href="${value}" target="_blank" class="text-blue-500 hover:underline">Скачать файл</a>`;
+        } else {
+            // Для AI-ответа значение уже будет в HTML
+            displayValue = String(value);
+        }
+
+        resultHtml += `
+            <div class="mt-4">
+                <p class="font-medium text-gray-600 dark:text-gray-400">${key}</p>
+                <div>${displayValue}</div>
+            </div>
+        `;
+    }
+    resultHtml += '</div>';
+    resultEl.innerHTML = resultHtml;
+}
+
+async function handleCheck(apiUrl, title) {
     const inn = innInput.value.trim();
 
+    resultEl.innerHTML = '';
+    errorEl.classList.add('hidden');
+
     if (!/^\d{10}$|^\d{12}$/.test(inn)) {
-        resultContainer.innerHTML = `<div class="p-3 bg-red-100 ...">...</div>`;
+        errorEl.textContent = 'ИНН должен состоять из 10 или 12 цифр.';
+        errorEl.classList.remove('hidden');
         return;
     }
-    resultContainer.innerHTML = `<div class="p-3 bg-yellow-100 ...">Проверяем...</div>`;
+
+    loadingEl.classList.remove('hidden');
+    checkoBtn.disabled = true;
+    deltaAiBtn.disabled = true;
 
     try {
-        // ✅ URL изменен на новый API эндпоинт
-        const response = await fetch('/api/inn/check', {
+        const response = await fetch(apiUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ inn: inn })
         });
-        // ... (остальной JavaScript код для обработки ответа остается без изменений) ...
-        const data = await response.json();
+
+        const resultData = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.detail || 'Неизвестная ошибка сервера');
+            throw new Error(resultData.detail || 'Неизвестная ошибка сервера');
         }
 
-        let resultHtml = '<dl class="divide-y divide-gray-200 dark:divide-gray-700">';
-        for (const [key, value] of Object.entries(data)) {
-            resultHtml += `
-                <div class="py-3 grid grid-cols-3 gap-4">
-                    <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">${key}</dt>
-                    <dd class="text-sm col-span-2">${value}</dd>
-                </div>
-            `;
-        }
-        resultHtml += '</dl>';
-        resultContainer.innerHTML = resultHtml;
+        const dataToRender = resultData.data ? resultData.data : resultData;
+        const source = resultData.source ? ` (источник: ${resultData.source})` : '';
+
+        renderResults(dataToRender, `${title}${source}`);
 
     } catch (error) {
-        resultContainer.innerHTML = `<div class="p-3 bg-red-100 ..."><b>Ошибка:</b> ${error.message}</div>`;
+        errorEl.textContent = `Ошибка: ${error.message}`;
+        errorEl.classList.remove('hidden');
+    } finally {
+        loadingEl.classList.add('hidden');
+        checkoBtn.disabled = false;
+        deltaAiBtn.disabled = false;
     }
+}
+
+checkoBtn.addEventListener('click', () => {
+    handleCheck('/api/inn/check', 'Результат проверки (Checko)');
 });
+
+// ✅ Обработчик для новой кнопки
+deltaAiBtn.addEventListener('click', () => {
+    handleCheck('/api/inn/check-delta-ai', 'Аналитическое заключение');
+});
+
 </script>
 {% endblock %}

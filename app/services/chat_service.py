@@ -1,15 +1,16 @@
-# app/services/chat_service.py
 import logging
-from typing import List, Dict
-from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+import os
+from typing import Dict, List
+
 import markdown
-from app.models import Chat, Message
+from fastapi import HTTPException
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings
+from sqlalchemy.orm import Session
+
 from app.config import Config
+from app.models import Chat, Message
 from app.utils import get_llm
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ SYSTEM_PROMPT = """
 7.  **Заявка на установку трекера (`14-25-И Заявка на установку трекера + маяк...`):** Подтверждение установки оборудования для отслеживания.
 8.  **Договор лизинга (ДЛ) (`ДЛ 14-25-И.docx`):** Основной договор аренды между "ИДЖАРА-ЛИЗИНГ" и клиентом.
 9.  **Акт к ДЛ (`акт к ДЛ 14-25-И.docx`):** Финальный акт приема-передачи имущества клиенту.
+10. **Отчет по компании лизингополучателя (`delta_report_clean_5726004117.docx`):** Отчет из стороннего источника по показателям компании лизингополучателя. Штрафы, анализ рисков, блокировки счетов и тд.
 
 **Правила ответа:**
 - **Основывайся только на фактах:** Всегда отвечай строго на основе информации из предоставленных документов. Не додумывай и не используй посторонние знания.
@@ -44,8 +46,8 @@ vectorstore = Chroma(
     embedding_function=OpenAIEmbeddings(
         model="text-embedding-3-small",
         api_key=os.getenv("AITUNNEL_API_KEY"),
-        base_url="https://api.aitunnel.ru/v1/"
-    )
+        base_url="https://api.aitunnel.ru/v1/",
+    ),
 )
 
 
@@ -58,7 +60,12 @@ def create_chat(title: str, user_id: int, db: Session) -> dict:
 
 
 def list_chats(user_id: int, db: Session) -> List[dict]:
-    chats = db.query(Chat).filter(Chat.user_id == user_id).order_by(Chat.created_at.desc()).all()
+    chats = (
+        db.query(Chat)
+        .filter(Chat.user_id == user_id)
+        .order_by(Chat.created_at.desc())
+        .all()
+    )
     return [{"id": c.id, "title": c.title} for c in chats]
 
 
@@ -70,14 +77,21 @@ def get_chat_messages(chat_id: int, user_id: int, db: Session) -> List[dict]:
         {
             "sender": m.sender,
             "content": m.content,
-            "html_content": markdown.markdown(m.content, extensions=['extra', 'nl2br']),
-            "timestamp": m.timestamp.isoformat()
-        } for m in chat.messages
+            "html_content": markdown.markdown(m.content, extensions=["extra", "nl2br"]),
+            "timestamp": m.timestamp.isoformat(),
+        }
+        for m in chat.messages
     ]
 
 
-async def send_message(chat_id: int, message: str, model: str, user_id: int, db_session: Session) -> Dict:
-    chat = db_session.query(Chat).filter(Chat.id == chat_id, Chat.user_id == user_id).first()
+async def send_message(
+    chat_id: int, message: str, model: str, user_id: int, db_session: Session
+) -> Dict:
+    chat = (
+        db_session.query(Chat)
+        .filter(Chat.id == chat_id, Chat.user_id == user_id)
+        .first()
+    )
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
 
@@ -86,25 +100,21 @@ async def send_message(chat_id: int, message: str, model: str, user_id: int, db_
     db_session.commit()
 
     try:
-        # 1. Поиск релевантных документов
         results = vectorstore.similarity_search(query=message, k=5)
 
-        # 2. Формируем контекст и финальный промпт для модели.
-        #    Блок `if not results:` был удален, чтобы запрос всегда уходил в LLM.
         context = "\n\n---\n\n".join([doc.page_content for doc in results])
         final_prompt = f"{SYSTEM_PROMPT}\n\n**Найденная информация из документов:**\n{context}\n\n**Вопрос пользователя:** {message}\n\n**Ответ:**"
 
-        # 3. Вызываем LLM для генерации ответа
         llm = get_llm(model)
         ai_response = await llm.ainvoke(final_prompt)
         ai_content = ai_response.content
 
-        html_content = markdown.markdown(ai_content, extensions=['extra', 'nl2br'])
+        html_content = markdown.markdown(ai_content, extensions=["extra", "nl2br"])
 
     except Exception as e:
         logger.error(f"Ошибка при генерации ответа: {str(e)}")
         ai_content = f"Произошла ошибка при обработке вашего запроса: {str(e)}"
-        html_content = markdown.markdown(ai_content, extensions=['extra', 'nl2br'])
+        html_content = markdown.markdown(ai_content, extensions=["extra", "nl2br"])
 
     ai_msg = Message(chat_id=chat.id, sender="ai", content=ai_content)
     db_session.add(ai_msg)

@@ -1,19 +1,18 @@
-# app/routes/document_generator.py
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
-from typing import List, Optional
 import os
+from typing import List, Optional
 from urllib.parse import quote
 
-from app.services.document_generator_service import generate_application
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+
 from app.auth import get_current_user
 from app.models import User
+from app.services.document_generator_service import generate_application
 
 router = APIRouter(prefix="/api/documents", tags=["document_generator"])
 
 
-# ✅ НОВЫЕ И ОБНОВЛЕННЫЕ МОДЕЛИ
 class Supplier(BaseModel):
     company: Optional[str] = None
     inn: Optional[str] = None
@@ -32,10 +31,12 @@ class Guarantor(BaseModel):
     inn: Optional[str] = None
     contacts: Optional[str] = None
 
+
 class Pledge(BaseModel):
     name: Optional[str] = None
     quantity: Optional[int] = None
     market_value: Optional[str] = None
+
 
 class DealData(BaseModel):
     lessee_company: Optional[str] = None
@@ -50,21 +51,28 @@ class DealData(BaseModel):
     guarantors: List[Guarantor] = []
     pledges: List[Pledge] = []
 
+
 @router.post("/generate/application")
-async def generate_application_route(deal_data: DealData, current_user: User = Depends(get_current_user)):
+async def generate_application_route(
+    deal_data: DealData, current_user: User = Depends(get_current_user)
+):
     deal_data_dict = deal_data.model_dump()
     print(deal_data_dict)
     file_path = generate_application(deal_data_dict)
 
     if not file_path:
-        raise HTTPException(status_code=500, detail="Не удалось сгенерировать документ.")
+        raise HTTPException(
+            status_code=500, detail="Не удалось сгенерировать документ."
+        )
 
     filename = os.path.basename(file_path)
     encoded_filename = quote(filename)
-    headers = {'Content-Disposition': f'attachment; filename*=UTF-8\'\'{encoded_filename}'}
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+    }
 
     return FileResponse(
         path=file_path,
-        media_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        headers=headers
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers=headers,
     )
